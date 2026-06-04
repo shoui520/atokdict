@@ -45,3 +45,51 @@ understood.
 Payload text scanning shows many plausible UTF-16BE runs in `DIC` and `DRT` payload areas. This
 does not mean the whole file is UTF-16BE; it means lookup/content record bodies or embedded string
 tables can use UTF-16BE even when the header title uses CP932.
+
+## `DRW` and `DSZ` Companion Databases
+
+`DRW` and `DSZ` files are SQLite databases obfuscated with a repeating 16-byte XOR key:
+
+```text
+06 68 5a 5e fa 4b 01 61 f6 93 85 b1 24 77 7a 82
+```
+
+After XOR decoding, every observed `DRW` and `DSZ` begins with the standard SQLite header
+`SQLite format 3\0`.
+
+Observed SQLite properties:
+
+- Page size: 1024 bytes for every observed `DRW` and `DSZ`.
+- Text encoding: SQLite encoding code `1` (`utf-8`).
+- Schema format: `1`.
+
+Observed `DRW` schema:
+
+```sql
+CREATE TABLE database_info (
+  title TEXT NOT NULL,
+  copyright TEXT,
+  description TEXT,
+  author TEXT,
+  version INTEGER,
+  revision INTEGER,
+  classification TEXT,
+  readonly_key TEXT,
+  unique_id TEXT,
+  uri TEXT,
+  date INTEGER,
+  libversion INTEGER,
+  private_key TEXT
+);
+
+CREATE TABLE keyword_info (
+  a_id INTEGER PRIMARY KEY,
+  word TEXT NOT NULL
+);
+
+CREATE INDEX keyword_search_index on keyword_info(word);
+```
+
+Observed `DSZ` schema stores thesaurus/access data with `TABLE_HEADER`, `TABLE_CLASS`,
+`TABLE_GROUP`, `TABLE_WORD`, and `TABLE_WORD_IHYOKI` plus indexes over class, group, reading,
+surface form, label, and alternate surface-form fields.

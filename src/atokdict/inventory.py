@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from atokdict.companion import CompanionSqliteHeader, parse_companion_header
 from atokdict.container import AtokHeader, parse_header
 
 
@@ -18,6 +19,7 @@ class InventoryFile:
     extension: str
     size: int
     header: dict[str, object] | None
+    companion_sqlite: dict[str, object] | None
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,7 @@ def scan_inventory(root: str | Path) -> list[InventoryGroup]:
         if not path.is_file() or path.suffix.upper() not in KNOWN_EXTENSIONS:
             continue
         header = _try_parse_header(path)
+        companion = _try_parse_companion_header(path) if header is None else None
         item = InventoryFile(
             path=str(path),
             name=path.name,
@@ -40,6 +43,7 @@ def scan_inventory(root: str | Path) -> list[InventoryGroup]:
             extension=path.suffix.upper().lstrip("."),
             size=path.stat().st_size,
             header=header.to_dict() if header else None,
+            companion_sqlite=companion.to_dict() if companion else None,
         )
         grouped[path.stem].append(item)
     return [
@@ -58,5 +62,14 @@ def inventory_to_dict(groups: list[InventoryGroup]) -> list[dict[str, object]]:
 def _try_parse_header(path: Path) -> AtokHeader | None:
     try:
         return parse_header(path)
+    except ValueError:
+        return None
+
+
+def _try_parse_companion_header(path: Path) -> CompanionSqliteHeader | None:
+    if path.suffix.upper() not in {".DRW", ".DSZ"}:
+        return None
+    try:
+        return parse_companion_header(path)
     except ValueError:
         return None

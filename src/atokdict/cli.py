@@ -4,6 +4,11 @@ import argparse
 import json
 from pathlib import Path
 
+from atokdict.companion import (
+    companion_page_type_counts,
+    parse_companion_header,
+    read_companion_schema,
+)
 from atokdict.container import parse_header
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
@@ -38,6 +43,22 @@ def main(argv: list[str] | None = None) -> int:
     setup_parser = subparsers.add_parser("setup", help="parse an ATOK SETUP.INI file")
     setup_parser.add_argument("path", type=Path)
 
+    companion_header_parser = subparsers.add_parser(
+        "companion-header", help="parse a DRW/DSZ XOR-obfuscated SQLite header"
+    )
+    companion_header_parser.add_argument("path", type=Path)
+
+    companion_schema_parser = subparsers.add_parser(
+        "companion-schema", help="show DRW/DSZ SQLite schema without dumping table data"
+    )
+    companion_schema_parser.add_argument("path", type=Path)
+    companion_schema_parser.add_argument(
+        "--counts", action="store_true", help="include table row counts"
+    )
+    companion_schema_parser.add_argument(
+        "--page-types", action="store_true", help="include decoded SQLite page type counts"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "header":
@@ -67,6 +88,22 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "setup":
         print(json.dumps(parse_setup_ini(args.path).to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "companion-header":
+        print(json.dumps(parse_companion_header(args.path).to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "companion-schema":
+        output: dict[str, object] = {
+            "schema": [
+                item.to_dict()
+                for item in read_companion_schema(args.path, include_counts=args.counts)
+            ]
+        }
+        if args.page_types:
+            output["page_types"] = companion_page_type_counts(args.path)
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
 
     parser.error(f"unsupported command: {args.command}")

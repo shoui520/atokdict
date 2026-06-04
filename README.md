@@ -18,6 +18,8 @@ payloads, installers, extracted data, generated exports, or private samples.
 python -m atokdict header /path/to/FILE.DIC
 python -m atokdict inventory /path/to/dicts --json
 python -m atokdict setup /path/to/SETUP.INI
+python -m atokdict companion-header /path/to/FILE.DRW
+python -m atokdict companion-schema /path/to/FILE.DSZ --counts --page-types
 python -m atokdict scan-text-runs /path/to/FILE.DRT --limit 20
 python -m atokdict scan-text-runs /path/to/FILE.DIC --encoding utf-16be --limit 20
 ```
