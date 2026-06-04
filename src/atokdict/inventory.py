@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
+from atokdict.container import AtokHeader, parse_header
+
+
+KNOWN_EXTENSIONS = {".DIC", ".DRT", ".DRW", ".DAR", ".DSY", ".DSZ"}
+
+
+@dataclass(frozen=True)
+class InventoryFile:
+    path: str
+    name: str
+    stem: str
+    extension: str
+    size: int
+    header: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class InventoryGroup:
+    stem: str
+    files: list[InventoryFile]
+
+
+def scan_inventory(root: str | Path) -> list[InventoryGroup]:
+    root_path = Path(root)
+    grouped: dict[str, list[InventoryFile]] = defaultdict(list)
+    for path in sorted(root_path.rglob("*")):
+        if not path.is_file() or path.suffix.upper() not in KNOWN_EXTENSIONS:
+            continue
+        header = _try_parse_header(path)
+        item = InventoryFile(
+            path=str(path),
+            name=path.name,
+            stem=path.stem,
+            extension=path.suffix.upper().lstrip("."),
+            size=path.stat().st_size,
+            header=header.to_dict() if header else None,
+        )
+        grouped[path.stem].append(item)
+    return [
+        InventoryGroup(stem=stem, files=sorted(files, key=lambda item: item.extension))
+        for stem, files in sorted(grouped.items())
+    ]
+
+
+def inventory_to_dict(groups: list[InventoryGroup]) -> list[dict[str, object]]:
+    return [
+        {"stem": group.stem, "files": [asdict(item) for item in group.files]}
+        for group in groups
+    ]
+
+
+def _try_parse_header(path: Path) -> AtokHeader | None:
+    try:
+        return parse_header(path)
+    except ValueError:
+        return None

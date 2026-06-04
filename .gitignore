@@ -1,0 +1,45 @@
+# Python build/test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# Local reverse-engineering output
+reports/
+samples/
+fixtures/private/
+*.log
+*.status.json
+*.exit
+*.pid
+
+# Never commit ATOK/JustSystems dictionary payloads or installers.
+*.7z
+*.zip
+*.rar
+*.DIC
+*.dic
+*.DRT
+*.drt
+*.DRW
+*.drw
+*.DAR
+*.dar
+*.DSY
+*.dsy
+*.DSZ
+*.dsz
+*.EXE
+*.exe
+*.DLL
+*.dll
+*.PDF
+*.pdf
