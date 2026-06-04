@@ -133,9 +133,15 @@ class DrtPrimaryIndexEntry:
     data_offset: int
     relative_offset: int
     byte_length: int
-    unknown_0x08: int
-    unknown_0x0c: int
-    unknown_0x10: int
+    field_0x08_byte_length: int
+    field_0x0c_byte_length: int
+    field_0x10_byte_length: int
+    segment_0_offset: int
+    segment_0_byte_length: int
+    segment_1_offset: int
+    segment_1_byte_length: int
+    segment_2_offset: int
+    segment_2_byte_length: int
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -148,9 +154,15 @@ class DrtPrimaryIndexEntry:
             "data_offset": self.data_offset,
             "relative_offset": self.relative_offset,
             "byte_length": self.byte_length,
-            "unknown_0x08": self.unknown_0x08,
-            "unknown_0x0c": self.unknown_0x0c,
-            "unknown_0x10": self.unknown_0x10,
+            "field_0x08_byte_length": self.field_0x08_byte_length,
+            "field_0x0c_byte_length": self.field_0x0c_byte_length,
+            "field_0x10_byte_length": self.field_0x10_byte_length,
+            "segment_0_offset": self.segment_0_offset,
+            "segment_0_byte_length": self.segment_0_byte_length,
+            "segment_1_offset": self.segment_1_offset,
+            "segment_1_byte_length": self.segment_1_byte_length,
+            "segment_2_offset": self.segment_2_offset,
+            "segment_2_byte_length": self.segment_2_byte_length,
         }
 
 
@@ -299,22 +311,44 @@ def parse_drt_primary_index(path_or_file: str | Path | BinaryIO) -> DrtPrimaryIn
         position = index * PRIMARY_INDEX_RECORD_SIZE
         key_raw = data[position : position + 4]
         data_offset = int.from_bytes(data[position + 4 : position + 8], "big")
-        unknown_0x08 = int.from_bytes(data[position + 8 : position + 12], "big")
-        unknown_0x0c = int.from_bytes(data[position + 12 : position + 16], "big")
-        unknown_0x10 = int.from_bytes(data[position + 16 : position + 20], "big")
+        field_0x08_byte_length = int.from_bytes(data[position + 8 : position + 12], "big")
+        field_0x0c_byte_length = int.from_bytes(data[position + 12 : position + 16], "big")
+        field_0x10_byte_length = int.from_bytes(data[position + 16 : position + 20], "big")
         if not payload_descriptor.data_offset <= data_offset < payload_descriptor.end_offset:
             raise ValueError("DRT primary index record points outside descriptor 0x3a8")
         pointers.append(data_offset)
-        raw_records.append((key_raw, data_offset, unknown_0x08, unknown_0x0c, unknown_0x10))
+        raw_records.append(
+            (
+                key_raw,
+                data_offset,
+                field_0x08_byte_length,
+                field_0x0c_byte_length,
+                field_0x10_byte_length,
+            )
+        )
 
     if not all(earlier <= later for earlier, later in zip(pointers, pointers[1:])):
         raise ValueError("DRT primary index data offsets are not monotonic")
 
     ends = pointers[1:] + [payload_descriptor.end_offset]
     entries: list[DrtPrimaryIndexEntry] = []
-    for index, ((key_raw, data_offset, unknown_0x08, unknown_0x0c, unknown_0x10), end) in enumerate(
-        zip(raw_records, ends, strict=True)
-    ):
+    for index, (raw_record, end) in enumerate(zip(raw_records, ends, strict=True)):
+        (
+            key_raw,
+            data_offset,
+            field_0x08_byte_length,
+            field_0x0c_byte_length,
+            field_0x10_byte_length,
+        ) = raw_record
+        block_length = end - data_offset
+        segment_length_sum = (
+            field_0x10_byte_length + field_0x08_byte_length + field_0x0c_byte_length
+        )
+        if segment_length_sum != block_length:
+            raise ValueError("DRT primary index segment lengths do not sum to block length")
+        segment_0_offset = data_offset
+        segment_1_offset = data_offset + field_0x10_byte_length
+        segment_2_offset = segment_1_offset + field_0x08_byte_length
         key_info = _guess_primary_key_encoding(key_raw)
         entries.append(
             DrtPrimaryIndexEntry(
@@ -327,10 +361,16 @@ def parse_drt_primary_index(path_or_file: str | Path | BinaryIO) -> DrtPrimaryIn
                 key_char_length=key_info[2],
                 data_offset=data_offset,
                 relative_offset=data_offset - payload_descriptor.data_offset,
-                byte_length=end - data_offset,
-                unknown_0x08=unknown_0x08,
-                unknown_0x0c=unknown_0x0c,
-                unknown_0x10=unknown_0x10,
+                byte_length=block_length,
+                field_0x08_byte_length=field_0x08_byte_length,
+                field_0x0c_byte_length=field_0x0c_byte_length,
+                field_0x10_byte_length=field_0x10_byte_length,
+                segment_0_offset=segment_0_offset,
+                segment_0_byte_length=field_0x10_byte_length,
+                segment_1_offset=segment_1_offset,
+                segment_1_byte_length=field_0x08_byte_length,
+                segment_2_offset=segment_2_offset,
+                segment_2_byte_length=field_0x0c_byte_length,
             )
         )
 

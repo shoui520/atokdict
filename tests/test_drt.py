@@ -59,14 +59,14 @@ def test_parse_synthetic_drt_primary_index() -> None:
         + (0x600).to_bytes(4, "big")
         + (1).to_bytes(4, "big")
         + (2).to_bytes(4, "big")
-        + (0x40).to_bytes(4, "big")
+        + (0x3D).to_bytes(4, "big")
     )
     data[0x514:0x528] = (
         bytes.fromhex("30d05e38")
         + (0x640).to_bytes(4, "big")
         + (3).to_bytes(4, "big")
         + (4).to_bytes(4, "big")
-        + (0x80).to_bytes(4, "big")
+        + (0xB9).to_bytes(4, "big")
     )
 
     primary_index = parse_drt_primary_index(BytesIO(data))
@@ -78,7 +78,15 @@ def test_parse_synthetic_drt_primary_index() -> None:
     assert primary_index.entries[0].key_char_length == 2
     assert primary_index.entries[0].data_offset == 0x600
     assert primary_index.entries[0].byte_length == 0x40
-    assert primary_index.entries[0].unknown_0x08 == 1
+    assert primary_index.entries[0].field_0x08_byte_length == 1
+    assert primary_index.entries[0].field_0x0c_byte_length == 2
+    assert primary_index.entries[0].field_0x10_byte_length == 0x3D
+    assert primary_index.entries[0].segment_0_offset == 0x600
+    assert primary_index.entries[0].segment_0_byte_length == 0x3D
+    assert primary_index.entries[0].segment_1_offset == 0x63D
+    assert primary_index.entries[0].segment_1_byte_length == 1
+    assert primary_index.entries[0].segment_2_offset == 0x63E
+    assert primary_index.entries[0].segment_2_byte_length == 2
     assert primary_index.entries[1].key_encoding_guess == "utf-16be"
     assert primary_index.entries[1].key_char_length == 2
     assert primary_index.entries[1].relative_offset == 0x40

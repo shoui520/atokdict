@@ -75,13 +75,15 @@ Observed 20-byte record:
 | --- | ---: | --- |
 | `+0x00` | 4 | Separator key bytes. Encoding varies; observed ASCII, UTF-16BE-like, and binary-looking values. |
 | `+0x04` | 4 | Big-endian absolute offset into descriptor `0x3a8`. |
-| `+0x08` | 4 | Unknown numeric field. |
-| `+0x0c` | 4 | Unknown numeric field. |
-| `+0x10` | 4 | Unknown numeric field. |
+| `+0x08` | 4 | Byte length of primary block segment 1. |
+| `+0x0c` | 4 | Byte length of primary block segment 2. |
+| `+0x10` | 4 | Byte length of primary block segment 0. |
 
 Adjacent primary-index offsets partition descriptor `0x3a8`; the final primary block ends at
 descriptor `0x3a8` EOF. The `drt-primary-index` command reports redacted separator-key hashes,
-encoding guesses, unknown numeric fields, offsets, and block sizes.
+encoding guesses, field lengths, derived segment offsets, and block sizes. Across all observed
+records, `field_0x10 + field_0x08 + field_0x0c == primary_block_length`. Segment order in the
+payload block is `0x10`, then `0x08`, then `0x0c`; segment contents are not assigned yet.
 
 ## `DRT` Final-Section Root Index
 
