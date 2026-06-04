@@ -124,6 +124,11 @@ def test_summarize_synthetic_drt_primary_blocks() -> None:
     assert block.header_segment_2_unit_count == 2
     assert block.header_counts_match_segments is True
     assert block.header_word_3_is_zero is True
+    assert block.header_segment_1_reference_word_indexes == [2, 4, 5, 7]
+    assert block.header_segment_1_reference_values == [1, 0, 1, 0]
+    assert block.header_segment_1_references_valid is True
+    assert block.header_word_6_is_segment_1_reference_or_sentinel is True
+    assert block.header_word_6_is_sentinel is True
 
 
 def test_rejects_non_root_index_final_section() -> None:
@@ -232,11 +237,11 @@ def _synthetic_primary_block_drt() -> bytearray:
     data[0x600:0x610] = (
         (1).to_bytes(2, "big")
         + (2).to_bytes(2, "big")
-        + (0x1234).to_bytes(2, "big")
+        + (1).to_bytes(2, "big")
         + (0).to_bytes(2, "big")
-        + (0x20).to_bytes(2, "big")
-        + (0x21).to_bytes(2, "big")
-        + (0x22).to_bytes(2, "big")
-        + (0x23).to_bytes(2, "big")
+        + (0).to_bytes(2, "big")
+        + (1).to_bytes(2, "big")
+        + (0xFFFF).to_bytes(2, "big")
+        + (0).to_bytes(2, "big")
     )
     return data

@@ -98,11 +98,14 @@ observed primary record:
 
 - header word 0 plus one equals `segment_1_byte_length / 4`;
 - header word 1 equals `segment_2_byte_length / 8`;
-- header word 3 is zero.
+- header word 3 is zero;
+- header words 2, 4, 5, and 7 are valid segment-1 unit indexes;
+- header word 6 is either a valid segment-1 unit index or `0xffff`.
 
 The `drt-primary-blocks` command reports primary block unit counts, these segment-0 header words,
-and whether the header count fields match the derived segment sizes. The remaining header words
-are still unassigned.
+whether the header count fields match the derived segment sizes, and whether the apparent
+segment-1 reference words are in range. The roles of these segment-1 references are still
+unassigned.
 
 The `drt-primary-segments` command reports bounded-prefix diagnostics for those derived segments:
 offsets, lengths, prefix hashes, NUL ratio, printable-ASCII ratio, unique byte count, marker counts,

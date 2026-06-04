@@ -17,6 +17,9 @@ PRIMARY_SEGMENT_0_UNIT_SIZE = 64
 PRIMARY_SEGMENT_1_UNIT_SIZE = 4
 PRIMARY_SEGMENT_2_UNIT_SIZE = 8
 PRIMARY_BLOCK_HEADER_WORD_COUNT = 8
+PRIMARY_BLOCK_HEADER_SEGMENT_1_REFERENCE_WORDS = (2, 4, 5, 7)
+PRIMARY_BLOCK_HEADER_SEGMENT_1_OPTIONAL_REFERENCE_WORD = 6
+PRIMARY_BLOCK_HEADER_SENTINEL = 0xFFFF
 DEFAULT_MAX_ROOT_ENTRIES = 4096
 DEFAULT_MAX_ROOT_BYTES = 4 * 1024 * 1024
 DEFAULT_MAX_KEY_BYTES = 1024
@@ -245,6 +248,11 @@ class DrtPrimaryBlockSummary:
     header_segment_2_unit_count: int
     header_counts_match_segments: bool
     header_word_3_is_zero: bool
+    header_segment_1_reference_word_indexes: list[int]
+    header_segment_1_reference_values: list[int]
+    header_segment_1_references_valid: bool
+    header_word_6_is_segment_1_reference_or_sentinel: bool
+    header_word_6_is_sentinel: bool
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -265,6 +273,15 @@ class DrtPrimaryBlockSummary:
             "header_segment_2_unit_count": self.header_segment_2_unit_count,
             "header_counts_match_segments": self.header_counts_match_segments,
             "header_word_3_is_zero": self.header_word_3_is_zero,
+            "header_segment_1_reference_word_indexes": (
+                self.header_segment_1_reference_word_indexes
+            ),
+            "header_segment_1_reference_values": self.header_segment_1_reference_values,
+            "header_segment_1_references_valid": self.header_segment_1_references_valid,
+            "header_word_6_is_segment_1_reference_or_sentinel": (
+                self.header_word_6_is_segment_1_reference_or_sentinel
+            ),
+            "header_word_6_is_sentinel": self.header_word_6_is_sentinel,
         }
 
 
@@ -544,6 +561,18 @@ def summarize_drt_primary_blocks(
         ]
         header_segment_1_unit_count = header_words[0] + 1
         header_segment_2_unit_count = header_words[1]
+        segment_1_reference_values = [
+            header_words[index]
+            for index in PRIMARY_BLOCK_HEADER_SEGMENT_1_REFERENCE_WORDS
+        ]
+        segment_1_references_valid = all(
+            value < segment_1_unit_count for value in segment_1_reference_values
+        )
+        header_word_6 = header_words[PRIMARY_BLOCK_HEADER_SEGMENT_1_OPTIONAL_REFERENCE_WORD]
+        header_word_6_is_sentinel = header_word_6 == PRIMARY_BLOCK_HEADER_SENTINEL
+        header_word_6_is_segment_1_reference_or_sentinel = (
+            header_word_6 < segment_1_unit_count or header_word_6_is_sentinel
+        )
         summaries.append(
             DrtPrimaryBlockSummary(
                 primary_record_index=entry.record_index,
@@ -566,6 +595,15 @@ def summarize_drt_primary_blocks(
                     and header_segment_2_unit_count == segment_2_unit_count
                 ),
                 header_word_3_is_zero=header_words[3] == 0,
+                header_segment_1_reference_word_indexes=list(
+                    PRIMARY_BLOCK_HEADER_SEGMENT_1_REFERENCE_WORDS
+                ),
+                header_segment_1_reference_values=segment_1_reference_values,
+                header_segment_1_references_valid=segment_1_references_valid,
+                header_word_6_is_segment_1_reference_or_sentinel=(
+                    header_word_6_is_segment_1_reference_or_sentinel
+                ),
+                header_word_6_is_sentinel=header_word_6_is_sentinel,
             )
         )
     return summaries
