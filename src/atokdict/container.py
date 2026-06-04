@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
@@ -9,6 +10,8 @@ HEADER_SIZE = 0x100
 TITLE_OFFSET = 0x40
 TITLE_SIZE = 0x40
 EPOCH_OFFSET = 0x3C
+SECTION_DESCRIPTOR_START = 0x380
+SECTION_DESCRIPTOR_END = 0x400
 KNOWN_CONTAINER_MAGICS = {"DIC", "DRT", "DSY"}
 
 
@@ -30,6 +33,17 @@ class AtokHeader:
     raw_title_hex: str
 
     def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AtokSectionDescriptor:
+    descriptor_offset: int
+    data_offset: int
+    byte_length: int
+    end_offset: int
+
+    def to_dict(self) -> dict[str, int]:
         return asdict(self)
 
 
@@ -80,6 +94,53 @@ def parse_header(path_or_file: str | Path | BinaryIO) -> AtokHeader:
         title_encoding=title_encoding,
         raw_title_hex=raw_title.rstrip(b"\x00").hex(),
     )
+
+
+def parse_section_descriptors(path_or_file: str | Path | BinaryIO) -> list[AtokSectionDescriptor]:
+    path: Path | None
+    size: int | None
+    if hasattr(path_or_file, "read"):
+        path = None
+        size = None
+        current = path_or_file.tell() if hasattr(path_or_file, "tell") else None  # type: ignore[union-attr]
+        if hasattr(path_or_file, "seek"):
+            path_or_file.seek(0)  # type: ignore[union-attr]
+        data = path_or_file.read(SECTION_DESCRIPTOR_END)  # type: ignore[union-attr]
+        if current is not None and hasattr(path_or_file, "seek"):
+            path_or_file.seek(current)  # type: ignore[union-attr]
+    else:
+        path = Path(path_or_file)
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            data = handle.read(SECTION_DESCRIPTOR_END)
+
+    if len(data) < SECTION_DESCRIPTOR_END:
+        raise ValueError("file is too small to contain an ATOK section descriptor area")
+
+    header = parse_header(path if path is not None else BytesIO(data[:HEADER_SIZE]))
+    if header.container_magic == "DSY":
+        return []
+
+    descriptors: list[AtokSectionDescriptor] = []
+    for descriptor_offset in range(SECTION_DESCRIPTOR_START, SECTION_DESCRIPTOR_END, 8):
+        data_offset = int.from_bytes(data[descriptor_offset : descriptor_offset + 4], "big")
+        byte_length = int.from_bytes(data[descriptor_offset + 4 : descriptor_offset + 8], "big")
+        if data_offset == 0 and byte_length == 0:
+            continue
+        end_offset = data_offset + byte_length
+        if size is not None and (
+            data_offset > size or byte_length > size or end_offset > size
+        ):
+            continue
+        descriptors.append(
+            AtokSectionDescriptor(
+                descriptor_offset=descriptor_offset,
+                data_offset=data_offset,
+                byte_length=byte_length,
+                end_offset=end_offset,
+            )
+        )
+    return descriptors
 
 
 def _decode_ascii_token(data: bytes) -> str:

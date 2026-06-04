@@ -25,3 +25,4 @@ def test_inventory_includes_companion_sqlite_metadata(tmp_path: Path) -> None:
     assert item.header is None
     assert item.companion_sqlite is not None
     assert item.companion_sqlite["sqlite_magic"] == "SQLite format 3"
+    assert item.section_descriptors == []

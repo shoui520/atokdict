@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from atokdict.container import parse_header
+from atokdict.container import parse_header, parse_section_descriptors
 
 
 def test_parse_synthetic_dic_header() -> None:
@@ -45,3 +45,22 @@ def test_parse_synthetic_dsy_title_as_utf16be() -> None:
     assert header.format_code == 0x0E01
     assert header.title == "類語"
     assert header.title_encoding == "utf-16be"
+
+
+def test_parse_synthetic_section_descriptors() -> None:
+    data = bytearray(0x500)
+    data[0:4] = b"DRT\0"
+    data[8:12] = b"ATOK"
+    data[0x10:0x14] = (0x0F01).to_bytes(4, "big")
+    data[0x14:0x18] = bytes([0x01, 0x18, 0x11, 0x16])
+    data[0x3C:0x40] = bytes([0x19, 0x89, 0x02, 0x22])
+    data[0x40:0x46] = "辞書".encode("cp932")
+    data[0x388:0x390] = (0x400).to_bytes(4, "big") + (0x80).to_bytes(4, "big")
+    data[0x390:0x398] = (0x480).to_bytes(4, "big") + (0x40).to_bytes(4, "big")
+
+    sections = parse_section_descriptors(BytesIO(data))
+
+    assert [section.descriptor_offset for section in sections] == [0x388, 0x390]
+    assert sections[0].data_offset == 0x400
+    assert sections[0].byte_length == 0x80
+    assert sections[0].end_offset == 0x480

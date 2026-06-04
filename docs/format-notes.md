@@ -46,6 +46,24 @@ Payload text scanning shows many plausible UTF-16BE runs in `DIC` and `DRT` payl
 does not mean the whole file is UTF-16BE; it means lookup/content record bodies or embedded string
 tables can use UTF-16BE even when the header title uses CP932.
 
+## Section Descriptors
+
+`DIC`, `DAR`, and `DRT` containers have a descriptor area in the extended header near
+`0x380..0x400`. Entries are big-endian 32-bit `(offset, byte_length)` pairs. Zero pairs are unused.
+Observed descriptors are structural maps into later file regions; semantics are not fully assigned
+yet.
+
+For `DRT`, descriptors generally cover several regions and the final non-zero descriptor often
+ends exactly at EOF. Small high-value examples:
+
+- `TSK_YOJIJUKUGO.DRT`: final descriptor `0x2d0e58 + 0x4da92 = EOF`.
+- `MK_KOTOWAZA.DRT`: final descriptor `0x4eecb0 + 0xb3c1e = EOF`.
+- `KOUJIEN.DRT`: final descriptor `0x147c83b2 + 0x1398634 = EOF`.
+
+For `DIC` and `DAR`, observed descriptors include fixed early regions such as
+`0x300+0x100`, `0x400+0x300`, and `0x700+0x200`, plus later small region descriptors in some
+files. `DSY` files do not appear to use this descriptor layout.
+
 ## `DRW` and `DSZ` Companion Databases
 
 `DRW` and `DSZ` files are SQLite databases obfuscated with a repeating 16-byte XOR key:

@@ -16,6 +16,7 @@ payloads, installers, extracted data, generated exports, or private samples.
 
 ```bash
 python -m atokdict header /path/to/FILE.DIC
+python -m atokdict sections /path/to/FILE.DRT
 python -m atokdict inventory /path/to/dicts --json
 python -m atokdict setup /path/to/SETUP.INI
 python -m atokdict companion-header /path/to/FILE.DRW

@@ -10,6 +10,7 @@ from atokdict.companion import (
     read_companion_schema,
 )
 from atokdict.container import parse_header
+from atokdict.container import parse_section_descriptors
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
 from atokdict.textscan import scan_cp932_runs, scan_utf16be_runs
@@ -21,6 +22,11 @@ def main(argv: list[str] | None = None) -> int:
 
     header_parser = subparsers.add_parser("header", help="parse an ATOK container header")
     header_parser.add_argument("path", type=Path)
+
+    sections_parser = subparsers.add_parser(
+        "sections", help="parse structural ATOK offset/length descriptors"
+    )
+    sections_parser.add_argument("path", type=Path)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -63,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "header":
         print(json.dumps(parse_header(args.path).to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "sections":
+        descriptors = parse_section_descriptors(args.path)
+        print(json.dumps([item.to_dict() for item in descriptors], ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":
