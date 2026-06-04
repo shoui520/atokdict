@@ -13,6 +13,9 @@ ROOT_RECORD_FIXED_SIZE = 16
 DEFAULT_MAX_ROOT_ENTRIES = 4096
 DEFAULT_MAX_ROOT_BYTES = 4 * 1024 * 1024
 DEFAULT_MAX_KEY_BYTES = 1024
+DEFAULT_CHILD_SCAN_BYTES = 16 * 1024
+DEFAULT_CHILD_HASH_BYTES = 64
+CHILD_MARKERS = (0xFFFF, 0xFFFE, 0xFFFD)
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,46 @@ class DrtRootIndex:
             "root_record_area_length": self.root_record_area_length,
             "entries_returned": len(entries),
             "entries": [entry.to_dict(include_key=include_keys) for entry in entries],
+        }
+
+
+@dataclass(frozen=True)
+class DrtRootChildBlock:
+    root_entry_index: int
+    block_offset: int
+    relative_offset: int
+    byte_length: int
+    root_flag: int
+    root_tag: int
+    root_value_a: int
+    root_value_b: int
+    root_key_byte_length: int
+    root_key_char_length: int
+    root_key_sha256_utf16be: str
+    scan_byte_length: int
+    prefix_sha256: str
+    marker_first_offsets: dict[str, int | None]
+    marker_counts: dict[str, int]
+    possible_absolute_offsets_in_scan: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "root_entry_index": self.root_entry_index,
+            "block_offset": self.block_offset,
+            "relative_offset": self.relative_offset,
+            "byte_length": self.byte_length,
+            "root_flag": self.root_flag,
+            "root_tag": self.root_tag,
+            "root_value_a": self.root_value_a,
+            "root_value_b": self.root_value_b,
+            "root_key_byte_length": self.root_key_byte_length,
+            "root_key_char_length": self.root_key_char_length,
+            "root_key_sha256_utf16be": self.root_key_sha256_utf16be,
+            "scan_byte_length": self.scan_byte_length,
+            "prefix_sha256": self.prefix_sha256,
+            "marker_first_offsets": self.marker_first_offsets,
+            "marker_counts": self.marker_counts,
+            "possible_absolute_offsets_in_scan": self.possible_absolute_offsets_in_scan,
         }
 
 
@@ -174,6 +217,53 @@ def parse_drt_root_index(
     )
 
 
+def summarize_drt_root_child_blocks(
+    path_or_file: str | Path | BinaryIO,
+    *,
+    scan_bytes: int = DEFAULT_CHILD_SCAN_BYTES,
+    prefix_hash_bytes: int = DEFAULT_CHILD_HASH_BYTES,
+) -> list[DrtRootChildBlock]:
+    root_index = parse_drt_root_index(path_or_file)
+    starts = [entry.data_offset for entry in root_index.entries]
+    ends = starts[1:] + [root_index.section_descriptor.end_offset]
+    summaries: list[DrtRootChildBlock] = []
+
+    for index, (entry, end_offset) in enumerate(zip(root_index.entries, ends, strict=True)):
+        byte_length = end_offset - entry.data_offset
+        if byte_length < 0:
+            raise ValueError("DRT root child block pointers are not monotonic")
+        scan = _read_absolute_prefix(
+            path_or_file,
+            offset=entry.data_offset,
+            byte_length=min(byte_length, scan_bytes),
+        )
+        summaries.append(
+            DrtRootChildBlock(
+                root_entry_index=index,
+                block_offset=entry.data_offset,
+                relative_offset=entry.data_offset - root_index.section_descriptor.data_offset,
+                byte_length=byte_length,
+                root_flag=entry.flag,
+                root_tag=entry.tag,
+                root_value_a=entry.value_a,
+                root_value_b=entry.value_b,
+                root_key_byte_length=entry.key_byte_length,
+                root_key_char_length=entry.key_char_length,
+                root_key_sha256_utf16be=hashlib.sha256(
+                    entry.key.encode("utf-16be")
+                ).hexdigest(),
+                scan_byte_length=len(scan),
+                prefix_sha256=hashlib.sha256(scan[:prefix_hash_bytes]).hexdigest(),
+                marker_first_offsets=_marker_first_offsets(scan),
+                marker_counts=_marker_counts(scan),
+                possible_absolute_offsets_in_scan=_possible_absolute_offset_count(
+                    scan, root_index.section_descriptor
+                ),
+            )
+        )
+    return summaries
+
+
 def _read_section_prefix(
     path_or_file: str | Path | BinaryIO,
     section: AtokSectionDescriptor,
@@ -198,6 +288,31 @@ def _read_section_prefix(
     with path.open("rb") as handle:
         handle.seek(section.data_offset)
         return handle.read(bytes_to_read)
+
+
+def _read_absolute_prefix(
+    path_or_file: str | Path | BinaryIO,
+    *,
+    offset: int,
+    byte_length: int,
+) -> bytes:
+    if hasattr(path_or_file, "read"):
+        current = (
+            path_or_file.tell()  # type: ignore[union-attr]
+            if hasattr(path_or_file, "tell")
+            else None
+        )
+        if hasattr(path_or_file, "seek"):
+            path_or_file.seek(offset)  # type: ignore[union-attr]
+        data = path_or_file.read(byte_length)  # type: ignore[union-attr]
+        if current is not None and hasattr(path_or_file, "seek"):
+            path_or_file.seek(current)  # type: ignore[union-attr]
+        return data
+
+    path = Path(path_or_file)
+    with path.open("rb") as handle:
+        handle.seek(offset)
+        return handle.read(byte_length)
 
 
 def _read_record_fields(
@@ -236,3 +351,32 @@ def _decode_key(data: bytes) -> str:
     if len(data) % 2:
         raise ValueError("DRT root index key has odd UTF-16BE byte length")
     return data.decode("utf-16be")
+
+
+def _marker_first_offsets(data: bytes) -> dict[str, int | None]:
+    found: dict[str, int | None] = {f"0x{marker:04x}": None for marker in CHILD_MARKERS}
+    for offset in range(0, len(data) - 1, 2):
+        value = int.from_bytes(data[offset : offset + 2], "big")
+        key = f"0x{value:04x}"
+        if key in found and found[key] is None:
+            found[key] = offset
+    return found
+
+
+def _marker_counts(data: bytes) -> dict[str, int]:
+    counts = {f"0x{marker:04x}": 0 for marker in CHILD_MARKERS}
+    for offset in range(0, len(data) - 1, 2):
+        value = int.from_bytes(data[offset : offset + 2], "big")
+        key = f"0x{value:04x}"
+        if key in counts:
+            counts[key] += 1
+    return counts
+
+
+def _possible_absolute_offset_count(data: bytes, section: AtokSectionDescriptor) -> int:
+    count = 0
+    for offset in range(0, len(data) - 3, 2):
+        value = int.from_bytes(data[offset : offset + 4], "big")
+        if section.data_offset <= value < section.end_offset:
+            count += 1
+    return count

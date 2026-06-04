@@ -12,6 +12,7 @@ from atokdict.companion import (
 from atokdict.container import parse_header
 from atokdict.container import parse_section_descriptors
 from atokdict.drt import parse_drt_root_index
+from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
 from atokdict.textscan import scan_cp932_runs, scan_utf16be_runs
@@ -39,6 +40,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="include decoded root separator keys in output",
     )
+
+    drt_child_parser = subparsers.add_parser(
+        "drt-root-children", help="summarize blocks pointed to by DRT root entries"
+    )
+    drt_child_parser.add_argument("path", type=Path)
+    drt_child_parser.add_argument("--limit", type=int, default=20)
+    drt_child_parser.add_argument("--scan-bytes", type=int, default=16 * 1024)
+    drt_child_parser.add_argument("--prefix-hash-bytes", type=int, default=64)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -97,6 +106,16 @@ def main(argv: list[str] | None = None) -> int:
                 indent=2,
             )
         )
+        return 0
+
+    if args.command == "drt-root-children":
+        blocks = summarize_drt_root_child_blocks(
+            args.path,
+            scan_bytes=args.scan_bytes,
+            prefix_hash_bytes=args.prefix_hash_bytes,
+        )
+        entries = blocks if args.limit is None else blocks[: args.limit]
+        print(json.dumps([item.to_dict() for item in entries], ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":

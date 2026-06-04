@@ -3,16 +3,19 @@
 from atokdict.companion import CompanionSqliteHeader, parse_companion_header
 from atokdict.container import AtokHeader, AtokSectionDescriptor, parse_header
 from atokdict.container import parse_section_descriptors
-from atokdict.drt import DrtRootIndex, DrtRootIndexEntry, parse_drt_root_index
+from atokdict.drt import DrtRootChildBlock, DrtRootIndex, DrtRootIndexEntry
+from atokdict.drt import parse_drt_root_index, summarize_drt_root_child_blocks
 
 __all__ = [
     "AtokHeader",
     "AtokSectionDescriptor",
     "CompanionSqliteHeader",
+    "DrtRootChildBlock",
     "DrtRootIndex",
     "DrtRootIndexEntry",
     "parse_companion_header",
     "parse_drt_root_index",
     "parse_header",
     "parse_section_descriptors",
+    "summarize_drt_root_child_blocks",
 ]

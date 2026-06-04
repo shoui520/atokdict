@@ -4,7 +4,7 @@ from io import BytesIO
 
 import pytest
 
-from atokdict.drt import parse_drt_root_index
+from atokdict.drt import parse_drt_root_index, summarize_drt_root_child_blocks
 
 
 def test_parse_synthetic_drt_root_index() -> None:
@@ -55,6 +55,53 @@ def test_rejects_non_root_index_final_section() -> None:
 
     with pytest.raises(ValueError, match="observed root index"):
         parse_drt_root_index(BytesIO(data))
+
+
+def test_summarize_synthetic_drt_root_child_blocks() -> None:
+    data = bytearray(0x600)
+    _write_drt_header(data)
+    data[0x388:0x390] = (0x500).to_bytes(4, "big") + (0x100).to_bytes(4, "big")
+
+    root = 0x500
+    data[root : root + 4] = (2).to_bytes(4, "big")
+    entry_1 = root + 14
+    data[entry_1 : entry_1 + 16] = (
+        (0x536).to_bytes(4, "big")
+        + (1).to_bytes(2, "big")
+        + (2).to_bytes(2, "big")
+        + (0x10).to_bytes(4, "big")
+        + (0x20).to_bytes(4, "big")
+    )
+    data[entry_1 + 16 : entry_1 + 20] = "aa".encode("utf-16be")
+
+    entry_2 = entry_1 + 20
+    data[entry_2 : entry_2 + 16] = (
+        (0x560).to_bytes(4, "big")
+        + (0).to_bytes(2, "big")
+        + (3).to_bytes(2, "big")
+        + (0x30).to_bytes(4, "big")
+        + (0x40).to_bytes(4, "big")
+    )
+    data[entry_2 + 16 : entry_2 + 20] = "bb".encode("utf-16be")
+
+    data[0x536:0x53E] = (
+        (0xFFFF).to_bytes(2, "big")
+        + (0xFFFE).to_bytes(2, "big")
+        + (0x560).to_bytes(4, "big")
+    )
+
+    blocks = summarize_drt_root_child_blocks(BytesIO(data), scan_bytes=32)
+
+    assert len(blocks) == 2
+    assert blocks[0].block_offset == 0x536
+    assert blocks[0].relative_offset == 0x36
+    assert blocks[0].byte_length == 0x2A
+    assert blocks[0].root_flag == 1
+    assert blocks[0].marker_first_offsets["0xffff"] == 0
+    assert blocks[0].marker_first_offsets["0xfffe"] == 2
+    assert blocks[0].marker_counts["0xffff"] == 1
+    assert blocks[0].possible_absolute_offsets_in_scan == 1
+    assert blocks[0].root_key_char_length == 2
 
 
 def _write_drt_header(data: bytearray) -> None:

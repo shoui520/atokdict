@@ -93,6 +93,19 @@ The root record area ends at the smallest absolute offset referenced by the root
 current parser uses that invariant to find the final root key boundary and redacts keys by default
 in CLI output.
 
+The root record offsets partition the rest of the final section into child blocks. Child block
+length is the difference between adjacent root offsets, with the final child ending at the final
+section EOF. These child blocks are not parsed yet, but bounded-prefix diagnostics show repeatable
+16-bit markers:
+
+- `0xffff`
+- `0xfffe`
+- `0xfffd`
+
+The `drt-root-children` command reports child block offsets, lengths, root numeric fields, marker
+positions/counts in a bounded prefix, and hashes. It does not emit raw child bytes or decoded child
+payload.
+
 ## `DRW` and `DSZ` Companion Databases
 
 `DRW` and `DSZ` files are SQLite databases obfuscated with a repeating 16-byte XOR key:
