@@ -85,6 +85,25 @@ encoding guesses, field lengths, derived segment offsets, and block sizes. Acros
 records, `field_0x10 + field_0x08 + field_0x0c == primary_block_length`. Segment order in the
 payload block is `0x10`, then `0x08`, then `0x0c`; segment contents are not assigned yet.
 
+The three primary block segments have stable unit alignment across all 1064 observed records:
+
+| Segment | Unit size | Observation |
+| --- | ---: | --- |
+| 0 | 64 bytes | Large stream, likely node/control blocks. |
+| 1 | 4 bytes | Count is repeated in segment-0 header word 0 plus one. |
+| 2 | 8 bytes | Count is repeated in segment-0 header word 1. |
+
+The first 16 bytes of segment 0 behave like an 8-word big-endian 16-bit block header. For every
+observed primary record:
+
+- header word 0 plus one equals `segment_1_byte_length / 4`;
+- header word 1 equals `segment_2_byte_length / 8`;
+- header word 3 is zero.
+
+The `drt-primary-blocks` command reports primary block unit counts, these segment-0 header words,
+and whether the header count fields match the derived segment sizes. The remaining header words
+are still unassigned.
+
 The `drt-primary-segments` command reports bounded-prefix diagnostics for those derived segments:
 offsets, lengths, prefix hashes, NUL ratio, printable-ASCII ratio, unique byte count, marker counts,
 first marker offsets, and possible absolute-offset candidate counts. It does not emit raw segment

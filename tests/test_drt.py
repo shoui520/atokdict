@@ -5,6 +5,7 @@ from io import BytesIO
 import pytest
 
 from atokdict.drt import parse_drt_primary_index, parse_drt_root_index
+from atokdict.drt import summarize_drt_primary_blocks
 from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
 
@@ -103,6 +104,28 @@ def test_summarize_synthetic_drt_primary_segments() -> None:
     assert segments[1].scan_byte_length == 1
 
 
+def test_summarize_synthetic_drt_primary_blocks() -> None:
+    data = _synthetic_primary_block_drt()
+
+    blocks = summarize_drt_primary_blocks(BytesIO(data))
+
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block.primary_record_index == 0
+    assert block.block_offset == 0x600
+    assert block.block_byte_length == 88
+    assert block.segment_0_unit_size == 64
+    assert block.segment_1_unit_size == 4
+    assert block.segment_2_unit_size == 8
+    assert block.segment_0_unit_count == 1
+    assert block.segment_1_unit_count == 2
+    assert block.segment_2_unit_count == 2
+    assert block.header_segment_1_unit_count == 2
+    assert block.header_segment_2_unit_count == 2
+    assert block.header_counts_match_segments is True
+    assert block.header_word_3_is_zero is True
+
+
 def test_rejects_non_root_index_final_section() -> None:
     data = bytearray(0x600)
     _write_drt_header(data)
@@ -189,5 +212,31 @@ def _synthetic_primary_index_drt() -> bytearray:
         + (3).to_bytes(4, "big")
         + (4).to_bytes(4, "big")
         + (0xB9).to_bytes(4, "big")
+    )
+    return data
+
+
+def _synthetic_primary_block_drt() -> bytearray:
+    data = bytearray(0x700)
+    _write_drt_header(data)
+    data[0x390:0x398] = (0x500).to_bytes(4, "big") + (0x14).to_bytes(4, "big")
+    data[0x3A8:0x3B0] = (0x600).to_bytes(4, "big") + (88).to_bytes(4, "big")
+
+    data[0x500:0x514] = (
+        b"\x00\x00ab"
+        + (0x600).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (16).to_bytes(4, "big")
+        + (64).to_bytes(4, "big")
+    )
+    data[0x600:0x610] = (
+        (1).to_bytes(2, "big")
+        + (2).to_bytes(2, "big")
+        + (0x1234).to_bytes(2, "big")
+        + (0).to_bytes(2, "big")
+        + (0x20).to_bytes(2, "big")
+        + (0x21).to_bytes(2, "big")
+        + (0x22).to_bytes(2, "big")
+        + (0x23).to_bytes(2, "big")
     )
     return data

@@ -13,6 +13,7 @@ from atokdict.container import parse_header
 from atokdict.container import parse_section_descriptors
 from atokdict.drt import parse_drt_primary_index
 from atokdict.drt import parse_drt_root_index
+from atokdict.drt import summarize_drt_primary_blocks
 from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.installer import parse_setup_ini
@@ -39,6 +40,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     drt_primary_parser.add_argument("path", type=Path)
     drt_primary_parser.add_argument("--limit", type=int, default=20)
+
+    drt_primary_blocks_parser = subparsers.add_parser(
+        "drt-primary-blocks",
+        help="summarize DRT primary block unit counts and segment-0 headers",
+    )
+    drt_primary_blocks_parser.add_argument("path", type=Path)
+    drt_primary_blocks_parser.add_argument("--limit", type=int, default=20)
 
     drt_primary_segments_parser = subparsers.add_parser(
         "drt-primary-segments",
@@ -150,6 +158,12 @@ def main(argv: list[str] | None = None) -> int:
             prefix_hash_bytes=args.prefix_hash_bytes,
         )
         entries = segments if args.limit is None else segments[: args.limit]
+        print(json.dumps([item.to_dict() for item in entries], ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "drt-primary-blocks":
+        blocks = summarize_drt_primary_blocks(args.path)
+        entries = blocks if args.limit is None else blocks[: args.limit]
         print(json.dumps([item.to_dict() for item in entries], ensure_ascii=False, indent=2))
         return 0
 

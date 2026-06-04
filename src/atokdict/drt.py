@@ -13,6 +13,10 @@ ROOT_RECORD_FIXED_SIZE = 16
 PRIMARY_INDEX_DESCRIPTOR_OFFSET = 0x390
 PRIMARY_PAYLOAD_DESCRIPTOR_OFFSET = 0x3A8
 PRIMARY_INDEX_RECORD_SIZE = 20
+PRIMARY_SEGMENT_0_UNIT_SIZE = 64
+PRIMARY_SEGMENT_1_UNIT_SIZE = 4
+PRIMARY_SEGMENT_2_UNIT_SIZE = 8
+PRIMARY_BLOCK_HEADER_WORD_COUNT = 8
 DEFAULT_MAX_ROOT_ENTRIES = 4096
 DEFAULT_MAX_ROOT_BYTES = 4 * 1024 * 1024
 DEFAULT_MAX_KEY_BYTES = 1024
@@ -219,6 +223,48 @@ class DrtPrimarySegmentSummary:
             "marker_counts": self.marker_counts,
             "marker_first_offsets": self.marker_first_offsets,
             "possible_absolute_offsets_in_scan": self.possible_absolute_offsets_in_scan,
+        }
+
+
+@dataclass(frozen=True)
+class DrtPrimaryBlockSummary:
+    primary_record_index: int
+    block_offset: int
+    block_byte_length: int
+    segment_0_byte_length: int
+    segment_1_byte_length: int
+    segment_2_byte_length: int
+    segment_0_unit_size: int
+    segment_1_unit_size: int
+    segment_2_unit_size: int
+    segment_0_unit_count: int
+    segment_1_unit_count: int
+    segment_2_unit_count: int
+    header_u16_words: list[int]
+    header_segment_1_unit_count: int
+    header_segment_2_unit_count: int
+    header_counts_match_segments: bool
+    header_word_3_is_zero: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "primary_record_index": self.primary_record_index,
+            "block_offset": self.block_offset,
+            "block_byte_length": self.block_byte_length,
+            "segment_0_byte_length": self.segment_0_byte_length,
+            "segment_1_byte_length": self.segment_1_byte_length,
+            "segment_2_byte_length": self.segment_2_byte_length,
+            "segment_0_unit_size": self.segment_0_unit_size,
+            "segment_1_unit_size": self.segment_1_unit_size,
+            "segment_2_unit_size": self.segment_2_unit_size,
+            "segment_0_unit_count": self.segment_0_unit_count,
+            "segment_1_unit_count": self.segment_1_unit_count,
+            "segment_2_unit_count": self.segment_2_unit_count,
+            "header_u16_words": self.header_u16_words,
+            "header_segment_1_unit_count": self.header_segment_1_unit_count,
+            "header_segment_2_unit_count": self.header_segment_2_unit_count,
+            "header_counts_match_segments": self.header_counts_match_segments,
+            "header_word_3_is_zero": self.header_word_3_is_zero,
         }
 
 
@@ -463,6 +509,68 @@ def summarize_drt_primary_segments(
     return summaries
 
 
+def summarize_drt_primary_blocks(
+    path_or_file: str | Path | BinaryIO,
+) -> list[DrtPrimaryBlockSummary]:
+    primary_index = parse_drt_primary_index(path_or_file)
+    summaries: list[DrtPrimaryBlockSummary] = []
+    header_byte_length = PRIMARY_BLOCK_HEADER_WORD_COUNT * 2
+    for entry in primary_index.entries:
+        segment_0_unit_count = _unit_count(
+            entry.segment_0_byte_length,
+            PRIMARY_SEGMENT_0_UNIT_SIZE,
+            "segment 0",
+        )
+        segment_1_unit_count = _unit_count(
+            entry.segment_1_byte_length,
+            PRIMARY_SEGMENT_1_UNIT_SIZE,
+            "segment 1",
+        )
+        segment_2_unit_count = _unit_count(
+            entry.segment_2_byte_length,
+            PRIMARY_SEGMENT_2_UNIT_SIZE,
+            "segment 2",
+        )
+        header = _read_absolute_prefix(
+            path_or_file,
+            offset=entry.segment_0_offset,
+            byte_length=header_byte_length,
+        )
+        if len(header) != header_byte_length:
+            raise ValueError("DRT primary block segment 0 is too small for its header")
+        header_words = [
+            int.from_bytes(header[offset : offset + 2], "big")
+            for offset in range(0, header_byte_length, 2)
+        ]
+        header_segment_1_unit_count = header_words[0] + 1
+        header_segment_2_unit_count = header_words[1]
+        summaries.append(
+            DrtPrimaryBlockSummary(
+                primary_record_index=entry.record_index,
+                block_offset=entry.data_offset,
+                block_byte_length=entry.byte_length,
+                segment_0_byte_length=entry.segment_0_byte_length,
+                segment_1_byte_length=entry.segment_1_byte_length,
+                segment_2_byte_length=entry.segment_2_byte_length,
+                segment_0_unit_size=PRIMARY_SEGMENT_0_UNIT_SIZE,
+                segment_1_unit_size=PRIMARY_SEGMENT_1_UNIT_SIZE,
+                segment_2_unit_size=PRIMARY_SEGMENT_2_UNIT_SIZE,
+                segment_0_unit_count=segment_0_unit_count,
+                segment_1_unit_count=segment_1_unit_count,
+                segment_2_unit_count=segment_2_unit_count,
+                header_u16_words=header_words,
+                header_segment_1_unit_count=header_segment_1_unit_count,
+                header_segment_2_unit_count=header_segment_2_unit_count,
+                header_counts_match_segments=(
+                    header_segment_1_unit_count == segment_1_unit_count
+                    and header_segment_2_unit_count == segment_2_unit_count
+                ),
+                header_word_3_is_zero=header_words[3] == 0,
+            )
+        )
+    return summaries
+
+
 def summarize_drt_root_child_blocks(
     path_or_file: str | Path | BinaryIO,
     *,
@@ -633,6 +741,12 @@ def _byte_ratio(data: bytes, predicate: Callable[[int], bool]) -> float:
         return 0.0
     count = sum(1 for value in data if predicate(value))
     return round(count / len(data), 6)
+
+
+def _unit_count(byte_length: int, unit_size: int, segment_name: str) -> int:
+    if byte_length % unit_size:
+        raise ValueError(f"DRT primary block {segment_name} is not unit-aligned")
+    return byte_length // unit_size
 
 
 def _guess_primary_key_encoding(key_raw: bytes) -> tuple[int, str, int | None]:
