@@ -85,6 +85,19 @@ encoding guesses, field lengths, derived segment offsets, and block sizes. Acros
 records, `field_0x10 + field_0x08 + field_0x0c == primary_block_length`. Segment order in the
 payload block is `0x10`, then `0x08`, then `0x0c`; segment contents are not assigned yet.
 
+The `drt-primary-segments` command reports bounded-prefix diagnostics for those derived segments:
+offsets, lengths, prefix hashes, NUL ratio, printable-ASCII ratio, unique byte count, marker counts,
+first marker offsets, and possible absolute-offset candidate counts. It does not emit raw segment
+bytes or decoded text.
+
+Across 1064 primary records in 38 observed `DRT` files, segment 0 is much larger and more
+index-like than segments 1 and 2. In 4096-byte bounded-prefix scans, segment 0 averaged many more
+possible absolute-offset candidates and almost always contained at least one of the existing
+16-bit marker words (`0xffff`, `0xfffe`, `0xfffd`). Segments 1 and 2 had higher printable-ASCII
+ratios, very low NUL ratios, and few marker hits. This suggests segment 0 is likely a node/index
+stream, while segments 1 and 2 are separate auxiliary or blob-like streams. The roles are still
+unassigned.
+
 ## `DRT` Final-Section Root Index
 
 Many Japanese `DRT` files with seven parsed section descriptors use the final section as a

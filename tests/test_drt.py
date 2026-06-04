@@ -5,6 +5,7 @@ from io import BytesIO
 import pytest
 
 from atokdict.drt import parse_drt_primary_index, parse_drt_root_index
+from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
 
 
@@ -49,25 +50,7 @@ def test_parse_synthetic_drt_root_index() -> None:
 
 
 def test_parse_synthetic_drt_primary_index() -> None:
-    data = bytearray(0x700)
-    _write_drt_header(data)
-    data[0x390:0x398] = (0x500).to_bytes(4, "big") + (0x28).to_bytes(4, "big")
-    data[0x3A8:0x3B0] = (0x600).to_bytes(4, "big") + (0x100).to_bytes(4, "big")
-
-    data[0x500:0x514] = (
-        b"\x00\x00ab"
-        + (0x600).to_bytes(4, "big")
-        + (1).to_bytes(4, "big")
-        + (2).to_bytes(4, "big")
-        + (0x3D).to_bytes(4, "big")
-    )
-    data[0x514:0x528] = (
-        bytes.fromhex("30d05e38")
-        + (0x640).to_bytes(4, "big")
-        + (3).to_bytes(4, "big")
-        + (4).to_bytes(4, "big")
-        + (0xB9).to_bytes(4, "big")
-    )
+    data = _synthetic_primary_index_drt()
 
     primary_index = parse_drt_primary_index(BytesIO(data))
 
@@ -91,6 +74,33 @@ def test_parse_synthetic_drt_primary_index() -> None:
     assert primary_index.entries[1].key_char_length == 2
     assert primary_index.entries[1].relative_offset == 0x40
     assert primary_index.entries[1].byte_length == 0xC0
+
+
+def test_summarize_synthetic_drt_primary_segments() -> None:
+    data = _synthetic_primary_index_drt()
+    data[0x600:0x60A] = (
+        (0xFFFF).to_bytes(2, "big")
+        + (0xFFFE).to_bytes(2, "big")
+        + (0xFFFD).to_bytes(2, "big")
+        + (0x640).to_bytes(4, "big")
+    )
+
+    segments = summarize_drt_primary_segments(BytesIO(data), scan_bytes=32)
+
+    assert len(segments) == 6
+    first = segments[0]
+    assert first.primary_record_index == 0
+    assert first.segment_index == 0
+    assert first.segment_offset == 0x600
+    assert first.segment_byte_length == 0x3D
+    assert first.scan_byte_length == 32
+    assert first.marker_first_offsets["0xffff"] == 0
+    assert first.marker_first_offsets["0xfffe"] == 2
+    assert first.marker_first_offsets["0xfffd"] == 4
+    assert first.marker_counts["0xffff"] == 1
+    assert first.possible_absolute_offsets_in_scan == 1
+    assert segments[1].segment_index == 1
+    assert segments[1].scan_byte_length == 1
 
 
 def test_rejects_non_root_index_final_section() -> None:
@@ -156,4 +166,28 @@ def _write_drt_header(data: bytearray) -> None:
     data[0x10:0x14] = (0x0F01).to_bytes(4, "big")
     data[0x14:0x18] = bytes([0x01, 0x18, 0x11, 0x16])
     data[0x3C:0x40] = bytes([0x19, 0x89, 0x02, 0x22])
-    data[0x40:0x46] = "辞書".encode("cp932")
+    title = "辞書".encode("cp932")
+    data[0x40 : 0x40 + len(title)] = title
+
+
+def _synthetic_primary_index_drt() -> bytearray:
+    data = bytearray(0x700)
+    _write_drt_header(data)
+    data[0x390:0x398] = (0x500).to_bytes(4, "big") + (0x28).to_bytes(4, "big")
+    data[0x3A8:0x3B0] = (0x600).to_bytes(4, "big") + (0x100).to_bytes(4, "big")
+
+    data[0x500:0x514] = (
+        b"\x00\x00ab"
+        + (0x600).to_bytes(4, "big")
+        + (1).to_bytes(4, "big")
+        + (2).to_bytes(4, "big")
+        + (0x3D).to_bytes(4, "big")
+    )
+    data[0x514:0x528] = (
+        bytes.fromhex("30d05e38")
+        + (0x640).to_bytes(4, "big")
+        + (3).to_bytes(4, "big")
+        + (4).to_bytes(4, "big")
+        + (0xB9).to_bytes(4, "big")
+    )
+    return data

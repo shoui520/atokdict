@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Callable
 
 from atokdict.container import AtokSectionDescriptor, parse_header, parse_section_descriptors
 
@@ -18,6 +18,8 @@ DEFAULT_MAX_ROOT_BYTES = 4 * 1024 * 1024
 DEFAULT_MAX_KEY_BYTES = 1024
 DEFAULT_CHILD_SCAN_BYTES = 16 * 1024
 DEFAULT_CHILD_HASH_BYTES = 64
+DEFAULT_PRIMARY_SEGMENT_SCAN_BYTES = 4 * 1024
+DEFAULT_PRIMARY_SEGMENT_HASH_BYTES = 64
 CHILD_MARKERS = (0xFFFF, 0xFFFE, 0xFFFD)
 
 
@@ -183,6 +185,40 @@ class DrtPrimaryIndex:
             "record_count": self.record_count,
             "entries_returned": len(entries),
             "entries": [entry.to_dict() for entry in entries],
+        }
+
+
+@dataclass(frozen=True)
+class DrtPrimarySegmentSummary:
+    primary_record_index: int
+    segment_index: int
+    segment_offset: int
+    segment_relative_offset: int
+    segment_byte_length: int
+    scan_byte_length: int
+    prefix_sha256: str
+    nul_byte_ratio: float
+    printable_ascii_ratio: float
+    unique_byte_count: int
+    marker_counts: dict[str, int]
+    marker_first_offsets: dict[str, int | None]
+    possible_absolute_offsets_in_scan: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "primary_record_index": self.primary_record_index,
+            "segment_index": self.segment_index,
+            "segment_offset": self.segment_offset,
+            "segment_relative_offset": self.segment_relative_offset,
+            "segment_byte_length": self.segment_byte_length,
+            "scan_byte_length": self.scan_byte_length,
+            "prefix_sha256": self.prefix_sha256,
+            "nul_byte_ratio": self.nul_byte_ratio,
+            "printable_ascii_ratio": self.printable_ascii_ratio,
+            "unique_byte_count": self.unique_byte_count,
+            "marker_counts": self.marker_counts,
+            "marker_first_offsets": self.marker_first_offsets,
+            "possible_absolute_offsets_in_scan": self.possible_absolute_offsets_in_scan,
         }
 
 
@@ -383,6 +419,50 @@ def parse_drt_primary_index(path_or_file: str | Path | BinaryIO) -> DrtPrimaryIn
     )
 
 
+def summarize_drt_primary_segments(
+    path_or_file: str | Path | BinaryIO,
+    *,
+    scan_bytes: int = DEFAULT_PRIMARY_SEGMENT_SCAN_BYTES,
+    prefix_hash_bytes: int = DEFAULT_PRIMARY_SEGMENT_HASH_BYTES,
+) -> list[DrtPrimarySegmentSummary]:
+    primary_index = parse_drt_primary_index(path_or_file)
+    summaries: list[DrtPrimarySegmentSummary] = []
+    for entry in primary_index.entries:
+        segments = [
+            (0, entry.segment_0_offset, entry.segment_0_byte_length),
+            (1, entry.segment_1_offset, entry.segment_1_byte_length),
+            (2, entry.segment_2_offset, entry.segment_2_byte_length),
+        ]
+        for segment_index, offset, byte_length in segments:
+            scan = _read_absolute_prefix(
+                path_or_file,
+                offset=offset,
+                byte_length=min(byte_length, scan_bytes),
+            )
+            summaries.append(
+                DrtPrimarySegmentSummary(
+                    primary_record_index=entry.record_index,
+                    segment_index=segment_index,
+                    segment_offset=offset,
+                    segment_relative_offset=offset - primary_index.payload_descriptor.data_offset,
+                    segment_byte_length=byte_length,
+                    scan_byte_length=len(scan),
+                    prefix_sha256=hashlib.sha256(scan[:prefix_hash_bytes]).hexdigest(),
+                    nul_byte_ratio=_byte_ratio(scan, lambda value: value == 0),
+                    printable_ascii_ratio=_byte_ratio(
+                        scan, lambda value: 0x20 <= value <= 0x7E
+                    ),
+                    unique_byte_count=len(set(scan)),
+                    marker_counts=_marker_counts(scan),
+                    marker_first_offsets=_marker_first_offsets(scan),
+                    possible_absolute_offsets_in_scan=_possible_absolute_offset_count(
+                        scan, primary_index.payload_descriptor
+                    ),
+                )
+            )
+    return summaries
+
+
 def summarize_drt_root_child_blocks(
     path_or_file: str | Path | BinaryIO,
     *,
@@ -546,6 +626,13 @@ def _possible_absolute_offset_count(data: bytes, section: AtokSectionDescriptor)
         if section.data_offset <= value < section.end_offset:
             count += 1
     return count
+
+
+def _byte_ratio(data: bytes, predicate: Callable[[int], bool]) -> float:
+    if not data:
+        return 0.0
+    count = sum(1 for value in data if predicate(value))
+    return round(count / len(data), 6)
 
 
 def _guess_primary_key_encoding(key_raw: bytes) -> tuple[int, str, int | None]:

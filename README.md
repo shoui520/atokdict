@@ -18,6 +18,7 @@ payloads, installers, extracted data, generated exports, or private samples.
 python -m atokdict header /path/to/FILE.DIC
 python -m atokdict sections /path/to/FILE.DRT
 python -m atokdict drt-primary-index /path/to/FILE.DRT --limit 20
+python -m atokdict drt-primary-segments /path/to/FILE.DRT --limit 20
 python -m atokdict drt-root-index /path/to/FILE.DRT --limit 20
 python -m atokdict drt-root-children /path/to/FILE.DRT --limit 20
 python -m atokdict drt-keyword-ranges /path/to/FILE.DRT --limit 20

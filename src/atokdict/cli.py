@@ -13,6 +13,7 @@ from atokdict.container import parse_header
 from atokdict.container import parse_section_descriptors
 from atokdict.drt import parse_drt_primary_index
 from atokdict.drt import parse_drt_root_index
+from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
@@ -37,6 +38,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     drt_primary_parser.add_argument("path", type=Path)
     drt_primary_parser.add_argument("--limit", type=int, default=20)
+
+    drt_primary_segments_parser = subparsers.add_parser(
+        "drt-primary-segments",
+        help="summarize bounded prefixes of DRT primary block segments",
+    )
+    drt_primary_segments_parser.add_argument("path", type=Path)
+    drt_primary_segments_parser.add_argument("--limit", type=int, default=20)
+    drt_primary_segments_parser.add_argument("--scan-bytes", type=int, default=4 * 1024)
+    drt_primary_segments_parser.add_argument("--prefix-hash-bytes", type=int, default=64)
 
     drt_root_parser = subparsers.add_parser(
         "drt-root-index", help="parse the observed DRT final-section root index"
@@ -122,6 +132,16 @@ def main(argv: list[str] | None = None) -> int:
                 indent=2,
             )
         )
+        return 0
+
+    if args.command == "drt-primary-segments":
+        segments = summarize_drt_primary_segments(
+            args.path,
+            scan_bytes=args.scan_bytes,
+            prefix_hash_bytes=args.prefix_hash_bytes,
+        )
+        entries = segments if args.limit is None else segments[: args.limit]
+        print(json.dumps([item.to_dict() for item in entries], ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "drt-root-index":
