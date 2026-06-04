@@ -41,3 +41,7 @@ The installer metadata links sidecars by basename:
 The first implementation intentionally parses only the common header and structural text-run
 locations. Entry extraction should wait until offset tables and record boundaries are better
 understood.
+
+Payload text scanning shows many plausible UTF-16BE runs in `DIC` and `DRT` payload areas. This
+does not mean the whole file is UTF-16BE; it means lookup/content record bodies or embedded string
+tables can use UTF-16BE even when the header title uses CP932.

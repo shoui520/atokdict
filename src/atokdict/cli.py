@@ -7,7 +7,7 @@ from pathlib import Path
 from atokdict.container import parse_header
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
-from atokdict.textscan import scan_cp932_runs
+from atokdict.textscan import scan_cp932_runs, scan_utf16be_runs
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +28,12 @@ def main(argv: list[str] | None = None) -> int:
     scan_parser.add_argument("--min-chars", type=int, default=12)
     scan_parser.add_argument("--limit", type=int, default=100)
     scan_parser.add_argument("--max-bytes", type=int, default=None)
+    scan_parser.add_argument(
+        "--encoding",
+        choices=["cp932", "utf-16be"],
+        default="cp932",
+        help="text encoding heuristic to scan for",
+    )
 
     setup_parser = subparsers.add_parser("setup", help="parse an ATOK SETUP.INI file")
     setup_parser.add_argument("path", type=Path)
@@ -49,7 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "scan-text-runs":
-        runs = scan_cp932_runs(
+        scanner = scan_utf16be_runs if args.encoding == "utf-16be" else scan_cp932_runs
+        runs = scanner(
             args.path,
             min_chars=args.min_chars,
             limit=args.limit,
