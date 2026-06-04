@@ -106,6 +106,18 @@ The `drt-root-children` command reports child block offsets, lengths, root numer
 positions/counts in a bounded prefix, and hashes. It does not emit raw child bytes or decoded child
 payload.
 
+When a matching `DRW` companion exists, non-empty root separator keys are monotonic in
+`keyword_info.word` sort order. The final root entry generally has an empty separator key and closes
+the final keyword range. This gives a root-level keyword partition model:
+
+- child block 0 covers keyword ranks `[0, separator_0_rank)`;
+- child block N covers `[separator_(N-1)_rank, separator_N_rank)`;
+- the empty final separator covers `[last_separator_rank, keyword_count)`.
+
+Exact separator-key matches in `keyword_info` are sparse, so separators should be treated as split
+boundaries rather than entry headwords. The `drt-keyword-ranges` command reports these ranges using
+keyword ranks, lower-bound `a_id` values, exact-match counts, and hashes.
+
 ## `DRW` and `DSZ` Companion Databases
 
 `DRW` and `DSZ` files are SQLite databases obfuscated with a repeating 16-byte XOR key:

@@ -15,6 +15,7 @@ from atokdict.drt import parse_drt_root_index
 from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
+from atokdict.linkage import summarize_drt_keyword_ranges
 from atokdict.textscan import scan_cp932_runs, scan_utf16be_runs
 
 
@@ -48,6 +49,14 @@ def main(argv: list[str] | None = None) -> int:
     drt_child_parser.add_argument("--limit", type=int, default=20)
     drt_child_parser.add_argument("--scan-bytes", type=int, default=16 * 1024)
     drt_child_parser.add_argument("--prefix-hash-bytes", type=int, default=64)
+
+    drt_keyword_parser = subparsers.add_parser(
+        "drt-keyword-ranges",
+        help="link DRT root child blocks to DRW keyword sort-order ranges",
+    )
+    drt_keyword_parser.add_argument("drt_path", type=Path)
+    drt_keyword_parser.add_argument("drw_path", type=Path, nargs="?")
+    drt_keyword_parser.add_argument("--limit", type=int, default=20)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -116,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         entries = blocks if args.limit is None else blocks[: args.limit]
         print(json.dumps([item.to_dict() for item in entries], ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "drt-keyword-ranges":
+        summary = summarize_drt_keyword_ranges(args.drt_path, args.drw_path)
+        print(json.dumps(summary.to_dict(entry_limit=args.limit), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":
