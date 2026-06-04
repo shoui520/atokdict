@@ -64,6 +64,35 @@ For `DIC` and `DAR`, observed descriptors include fixed early regions such as
 `0x300+0x100`, `0x400+0x300`, and `0x700+0x200`, plus later small region descriptors in some
 files. `DSY` files do not appear to use this descriptor layout.
 
+## `DRT` Final-Section Root Index
+
+Many Japanese `DRT` files with seven parsed section descriptors use the final section as a
+root-index area. This is not universal; English and some auxiliary DRT files use a different final
+section layout.
+
+Observed root-index layout:
+
+| Relative offset | Size | Observation |
+| --- | ---: | --- |
+| `0x00` | 4 | Big-endian root entry count. |
+| `0x04` | 10 | Zero-filled in observed root-index files; meaning unknown. |
+| `0x0e` | variable | Root records with a 16-byte prefix and UTF-16BE separator key. |
+
+Observed root record fixed prefix:
+
+| Relative offset | Size | Observation |
+| --- | ---: | --- |
+| `+0x00` | 4 | Big-endian absolute offset into the same final section. |
+| `+0x04` | 2 | Flag-like value. Observed `0` and `1`; semantics unknown. |
+| `+0x06` | 2 | Tag/value field. Semantics unknown. |
+| `+0x08` | 4 | Numeric field. Semantics unknown. |
+| `+0x0c` | 4 | Numeric field. Semantics unknown. |
+| `+0x10` | variable | UTF-16BE separator key bytes. |
+
+The root record area ends at the smallest absolute offset referenced by the root records. The
+current parser uses that invariant to find the final root key boundary and redacts keys by default
+in CLI output.
+
 ## `DRW` and `DSZ` Companion Databases
 
 `DRW` and `DSZ` files are SQLite databases obfuscated with a repeating 16-byte XOR key:
