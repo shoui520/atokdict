@@ -9,6 +9,8 @@ from atokdict.drt import parse_drt_primary_index
 from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import parse_drt_root_index, summarize_drt_root_child_blocks
 from atokdict.linkage import DrtKeywordRange, DrtKeywordRangeSummary
+from atokdict.linkage import DrtPrimaryKeywordRange, DrtPrimaryKeywordRangeSummary
+from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
 
 __all__ = [
@@ -23,12 +25,15 @@ __all__ = [
     "DrtRootIndexEntry",
     "DrtKeywordRange",
     "DrtKeywordRangeSummary",
+    "DrtPrimaryKeywordRange",
+    "DrtPrimaryKeywordRangeSummary",
     "parse_companion_header",
     "parse_drt_primary_index",
     "parse_drt_root_index",
     "parse_header",
     "parse_section_descriptors",
     "summarize_drt_keyword_ranges",
+    "summarize_drt_primary_keyword_ranges",
     "summarize_drt_primary_segments",
     "summarize_drt_root_child_blocks",
 ]

@@ -17,6 +17,7 @@ from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
+from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
 from atokdict.textscan import scan_cp932_runs, scan_utf16be_runs
 
@@ -74,6 +75,14 @@ def main(argv: list[str] | None = None) -> int:
     drt_keyword_parser.add_argument("drt_path", type=Path)
     drt_keyword_parser.add_argument("drw_path", type=Path, nargs="?")
     drt_keyword_parser.add_argument("--limit", type=int, default=20)
+
+    drt_primary_keyword_parser = subparsers.add_parser(
+        "drt-primary-keyword-ranges",
+        help="link DRT primary separators to DRW keyword sort-order ranges",
+    )
+    drt_primary_keyword_parser.add_argument("drt_path", type=Path)
+    drt_primary_keyword_parser.add_argument("drw_path", type=Path, nargs="?")
+    drt_primary_keyword_parser.add_argument("--limit", type=int, default=20)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -167,6 +176,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "drt-keyword-ranges":
         summary = summarize_drt_keyword_ranges(args.drt_path, args.drw_path)
+        print(json.dumps(summary.to_dict(entry_limit=args.limit), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "drt-primary-keyword-ranges":
+        summary = summarize_drt_primary_keyword_ranges(args.drt_path, args.drw_path)
         print(json.dumps(summary.to_dict(entry_limit=args.limit), ensure_ascii=False, indent=2))
         return 0
 

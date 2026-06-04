@@ -98,6 +98,21 @@ ratios, very low NUL ratios, and few marker hits. This suggests segment 0 is lik
 stream, while segments 1 and 2 are separate auxiliary or blob-like streams. The roles are still
 unassigned.
 
+When a matching `DRW` companion exists, the 4-byte primary separator key can also be tested against
+`keyword_info.word` sort order. In English dictionaries such as `LDOCE`, `LEJBD`, and `GENIUSEJ`,
+the decodable primary separator ranks are monotonic. A binary-looking final primary key then acts
+like a terminal separator, giving one keyword-rank range per primary block:
+
+- primary block 0 covers keyword ranks `[0, separator_0_rank)`;
+- primary block N covers `[separator_(N-1)_rank, separator_N_rank)`;
+- the terminal binary separator covers `[last_separator_rank, keyword_count)`.
+
+The `drt-primary-keyword-ranges` command reports this linkage with separator hashes, encoding
+guesses, lower-bound ranks, exact/prefix match counts, and derived partition sizes. It does not
+emit raw separator keys or keyword text. Japanese primary separator ranks are not generally
+monotonic under the current naive decoded-key model, so the command reports `null` partitions when
+the rank sequence is not monotonic.
+
 ## `DRT` Final-Section Root Index
 
 Many Japanese `DRT` files with seven parsed section descriptors use the final section as a

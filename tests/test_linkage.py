@@ -4,6 +4,7 @@ from pathlib import Path
 import sqlite3
 
 from atokdict.companion import decode_companion_bytes
+from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
 
 
@@ -27,6 +28,32 @@ def test_summarize_drt_keyword_ranges(tmp_path: Path) -> None:
     assert summary.ranges[0].separator_lower_bound_a_id == 2
     assert summary.ranges[0].separator_exact_a_ids == [2]
     assert summary.ranges[2].separator_is_empty is True
+    assert summary.ranges[2].separator_lower_bound_rank is None
+
+
+def test_summarize_drt_primary_keyword_ranges(tmp_path: Path) -> None:
+    drt = tmp_path / "primary.DRT"
+    drw = tmp_path / "primary.DRW"
+    _write_synthetic_primary_drt(drt)
+    _write_synthetic_drw(drw)
+
+    summary = summarize_drt_primary_keyword_ranges(drt)
+
+    assert summary.keyword_count == 5
+    assert summary.primary_record_count == 3
+    assert summary.decodable_separator_count == 2
+    assert summary.exact_separator_count == 2
+    assert summary.prefix_separator_count == 2
+    assert summary.separator_ranks_monotonic is True
+    assert [item.partition_start_rank for item in summary.ranges] == [0, 1, 3]
+    assert [item.partition_end_rank for item in summary.ranges] == [1, 3, 5]
+    assert [item.partition_keyword_count for item in summary.ranges] == [1, 2, 2]
+    assert summary.ranges[0].separator_key_encoding_guess == "ascii"
+    assert summary.ranges[0].separator_lower_bound_rank == 1
+    assert summary.ranges[0].separator_lower_bound_a_id == 2
+    assert summary.ranges[0].separator_exact_match_count == 1
+    assert summary.ranges[0].separator_prefix_match_count == 1
+    assert summary.ranges[2].separator_is_decodable is False
     assert summary.ranges[2].separator_lower_bound_rank is None
 
 
@@ -54,6 +81,46 @@ def _write_synthetic_drt(path: Path) -> None:
     entry_3 = entry_2 + 20
     data[entry_3 : entry_3 + 16] = _root_entry(0x5C0)
     path.write_bytes(data)
+
+
+def _write_synthetic_primary_drt(path: Path) -> None:
+    data = bytearray(0x700)
+    _write_common_drt_header(data)
+    data[0x390:0x398] = (0x500).to_bytes(4, "big") + (0x3C).to_bytes(4, "big")
+    data[0x3A8:0x3B0] = (0x600).to_bytes(4, "big") + (0x100).to_bytes(4, "big")
+
+    data[0x500:0x514] = (
+        b"\x00\x00bb"
+        + (0x600).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (0x30).to_bytes(4, "big")
+    )
+    data[0x514:0x528] = (
+        b"\x00\x00dd"
+        + (0x640).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (0x30).to_bytes(4, "big")
+    )
+    data[0x528:0x53C] = (
+        b"\xff\xff\xff\xff"
+        + (0x680).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (0x70).to_bytes(4, "big")
+    )
+    path.write_bytes(data)
+
+
+def _write_common_drt_header(data: bytearray) -> None:
+    data[0:4] = b"DRT\0"
+    data[8:12] = b"ATOK"
+    data[0x10:0x14] = (0x0F01).to_bytes(4, "big")
+    data[0x14:0x18] = bytes([0x01, 0x18, 0x11, 0x16])
+    data[0x3C:0x40] = bytes([0x19, 0x89, 0x02, 0x22])
+    title = "辞書".encode("cp932")
+    data[0x40 : 0x40 + len(title)] = title
 
 
 def _root_entry(data_offset: int) -> bytes:
