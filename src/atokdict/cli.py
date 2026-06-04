@@ -11,6 +11,7 @@ from atokdict.companion import (
 )
 from atokdict.container import parse_header
 from atokdict.container import parse_section_descriptors
+from atokdict.drt import parse_drt_primary_index
 from atokdict.drt import parse_drt_root_index
 from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.installer import parse_setup_ini
@@ -30,6 +31,12 @@ def main(argv: list[str] | None = None) -> int:
         "sections", help="parse structural ATOK offset/length descriptors"
     )
     sections_parser.add_argument("path", type=Path)
+
+    drt_primary_parser = subparsers.add_parser(
+        "drt-primary-index", help="parse the common DRT descriptor-0x390 index table"
+    )
+    drt_primary_parser.add_argument("path", type=Path)
+    drt_primary_parser.add_argument("--limit", type=int, default=20)
 
     drt_root_parser = subparsers.add_parser(
         "drt-root-index", help="parse the observed DRT final-section root index"
@@ -104,6 +111,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sections":
         descriptors = parse_section_descriptors(args.path)
         print(json.dumps([item.to_dict() for item in descriptors], ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "drt-primary-index":
+        primary_index = parse_drt_primary_index(args.path)
+        print(
+            json.dumps(
+                primary_index.to_dict(entry_limit=args.limit),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
 
     if args.command == "drt-root-index":

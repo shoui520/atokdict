@@ -4,7 +4,8 @@ from io import BytesIO
 
 import pytest
 
-from atokdict.drt import parse_drt_root_index, summarize_drt_root_child_blocks
+from atokdict.drt import parse_drt_primary_index, parse_drt_root_index
+from atokdict.drt import summarize_drt_root_child_blocks
 
 
 def test_parse_synthetic_drt_root_index() -> None:
@@ -45,6 +46,43 @@ def test_parse_synthetic_drt_root_index() -> None:
     assert root_index.entries[0].tag == 2
     assert root_index.entries[0].value_a == 0x10
     assert root_index.entries[0].value_b == 0x20
+
+
+def test_parse_synthetic_drt_primary_index() -> None:
+    data = bytearray(0x700)
+    _write_drt_header(data)
+    data[0x390:0x398] = (0x500).to_bytes(4, "big") + (0x28).to_bytes(4, "big")
+    data[0x3A8:0x3B0] = (0x600).to_bytes(4, "big") + (0x100).to_bytes(4, "big")
+
+    data[0x500:0x514] = (
+        b"\x00\x00ab"
+        + (0x600).to_bytes(4, "big")
+        + (1).to_bytes(4, "big")
+        + (2).to_bytes(4, "big")
+        + (0x40).to_bytes(4, "big")
+    )
+    data[0x514:0x528] = (
+        bytes.fromhex("30d05e38")
+        + (0x640).to_bytes(4, "big")
+        + (3).to_bytes(4, "big")
+        + (4).to_bytes(4, "big")
+        + (0x80).to_bytes(4, "big")
+    )
+
+    primary_index = parse_drt_primary_index(BytesIO(data))
+
+    assert primary_index.record_count == 2
+    assert primary_index.entries[0].record_offset == 0x500
+    assert primary_index.entries[0].key_encoding_guess == "ascii"
+    assert primary_index.entries[0].key_byte_length == 2
+    assert primary_index.entries[0].key_char_length == 2
+    assert primary_index.entries[0].data_offset == 0x600
+    assert primary_index.entries[0].byte_length == 0x40
+    assert primary_index.entries[0].unknown_0x08 == 1
+    assert primary_index.entries[1].key_encoding_guess == "utf-16be"
+    assert primary_index.entries[1].key_char_length == 2
+    assert primary_index.entries[1].relative_offset == 0x40
+    assert primary_index.entries[1].byte_length == 0xC0
 
 
 def test_rejects_non_root_index_final_section() -> None:

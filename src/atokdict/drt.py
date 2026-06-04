@@ -10,6 +10,9 @@ from atokdict.container import AtokSectionDescriptor, parse_header, parse_sectio
 
 ROOT_HEADER_SIZE = 14
 ROOT_RECORD_FIXED_SIZE = 16
+PRIMARY_INDEX_DESCRIPTOR_OFFSET = 0x390
+PRIMARY_PAYLOAD_DESCRIPTOR_OFFSET = 0x3A8
+PRIMARY_INDEX_RECORD_SIZE = 20
 DEFAULT_MAX_ROOT_ENTRIES = 4096
 DEFAULT_MAX_ROOT_BYTES = 4 * 1024 * 1024
 DEFAULT_MAX_KEY_BYTES = 1024
@@ -119,6 +122,58 @@ class DrtRootChildBlock:
         }
 
 
+@dataclass(frozen=True)
+class DrtPrimaryIndexEntry:
+    record_index: int
+    record_offset: int
+    key_raw_sha256: str
+    key_byte_length: int
+    key_encoding_guess: str
+    key_char_length: int | None
+    data_offset: int
+    relative_offset: int
+    byte_length: int
+    unknown_0x08: int
+    unknown_0x0c: int
+    unknown_0x10: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "record_index": self.record_index,
+            "record_offset": self.record_offset,
+            "key_raw_sha256": self.key_raw_sha256,
+            "key_byte_length": self.key_byte_length,
+            "key_encoding_guess": self.key_encoding_guess,
+            "key_char_length": self.key_char_length,
+            "data_offset": self.data_offset,
+            "relative_offset": self.relative_offset,
+            "byte_length": self.byte_length,
+            "unknown_0x08": self.unknown_0x08,
+            "unknown_0x0c": self.unknown_0x0c,
+            "unknown_0x10": self.unknown_0x10,
+        }
+
+
+@dataclass(frozen=True)
+class DrtPrimaryIndex:
+    path: str | None
+    index_descriptor: AtokSectionDescriptor
+    payload_descriptor: AtokSectionDescriptor
+    record_count: int
+    entries: list[DrtPrimaryIndexEntry]
+
+    def to_dict(self, *, entry_limit: int | None = None) -> dict[str, object]:
+        entries = self.entries if entry_limit is None else self.entries[:entry_limit]
+        return {
+            "path": self.path,
+            "index_descriptor": self.index_descriptor.to_dict(),
+            "payload_descriptor": self.payload_descriptor.to_dict(),
+            "record_count": self.record_count,
+            "entries_returned": len(entries),
+            "entries": [entry.to_dict() for entry in entries],
+        }
+
+
 def parse_drt_root_index(
     path_or_file: str | Path | BinaryIO,
     *,
@@ -213,6 +268,77 @@ def parse_drt_root_index(
         entry_count=entry_count,
         root_header_unknown_hex=unknown_header.hex(),
         root_record_area_length=key_end - ROOT_HEADER_SIZE,
+        entries=entries,
+    )
+
+
+def parse_drt_primary_index(path_or_file: str | Path | BinaryIO) -> DrtPrimaryIndex:
+    header = parse_header(path_or_file)
+    if header.container_magic != "DRT":
+        raise ValueError("DRT primary index parsing requires a DRT container")
+
+    descriptors = {
+        item.descriptor_offset: item for item in parse_section_descriptors(path_or_file)
+    }
+    index_descriptor = descriptors.get(PRIMARY_INDEX_DESCRIPTOR_OFFSET)
+    payload_descriptor = descriptors.get(PRIMARY_PAYLOAD_DESCRIPTOR_OFFSET)
+    if index_descriptor is None or payload_descriptor is None:
+        raise ValueError("DRT primary index requires descriptors at 0x390 and 0x3a8")
+    if index_descriptor.byte_length % PRIMARY_INDEX_RECORD_SIZE:
+        raise ValueError("DRT primary index byte length is not a multiple of 20")
+
+    data = _read_absolute_prefix(
+        path_or_file,
+        offset=index_descriptor.data_offset,
+        byte_length=index_descriptor.byte_length,
+    )
+    record_count = len(data) // PRIMARY_INDEX_RECORD_SIZE
+    pointers: list[int] = []
+    raw_records: list[tuple[bytes, int, int, int, int]] = []
+    for index in range(record_count):
+        position = index * PRIMARY_INDEX_RECORD_SIZE
+        key_raw = data[position : position + 4]
+        data_offset = int.from_bytes(data[position + 4 : position + 8], "big")
+        unknown_0x08 = int.from_bytes(data[position + 8 : position + 12], "big")
+        unknown_0x0c = int.from_bytes(data[position + 12 : position + 16], "big")
+        unknown_0x10 = int.from_bytes(data[position + 16 : position + 20], "big")
+        if not payload_descriptor.data_offset <= data_offset < payload_descriptor.end_offset:
+            raise ValueError("DRT primary index record points outside descriptor 0x3a8")
+        pointers.append(data_offset)
+        raw_records.append((key_raw, data_offset, unknown_0x08, unknown_0x0c, unknown_0x10))
+
+    if not all(earlier <= later for earlier, later in zip(pointers, pointers[1:])):
+        raise ValueError("DRT primary index data offsets are not monotonic")
+
+    ends = pointers[1:] + [payload_descriptor.end_offset]
+    entries: list[DrtPrimaryIndexEntry] = []
+    for index, ((key_raw, data_offset, unknown_0x08, unknown_0x0c, unknown_0x10), end) in enumerate(
+        zip(raw_records, ends, strict=True)
+    ):
+        key_info = _guess_primary_key_encoding(key_raw)
+        entries.append(
+            DrtPrimaryIndexEntry(
+                record_index=index,
+                record_offset=index_descriptor.data_offset
+                + index * PRIMARY_INDEX_RECORD_SIZE,
+                key_raw_sha256=hashlib.sha256(key_raw).hexdigest(),
+                key_byte_length=key_info[0],
+                key_encoding_guess=key_info[1],
+                key_char_length=key_info[2],
+                data_offset=data_offset,
+                relative_offset=data_offset - payload_descriptor.data_offset,
+                byte_length=end - data_offset,
+                unknown_0x08=unknown_0x08,
+                unknown_0x0c=unknown_0x0c,
+                unknown_0x10=unknown_0x10,
+            )
+        )
+
+    return DrtPrimaryIndex(
+        path=header.path,
+        index_descriptor=index_descriptor,
+        payload_descriptor=payload_descriptor,
+        record_count=record_count,
         entries=entries,
     )
 
@@ -380,3 +506,20 @@ def _possible_absolute_offset_count(data: bytes, section: AtokSectionDescriptor)
         if section.data_offset <= value < section.end_offset:
             count += 1
     return count
+
+
+def _guess_primary_key_encoding(key_raw: bytes) -> tuple[int, str, int | None]:
+    key = key_raw.lstrip(b"\x00")
+    if not key:
+        return 0, "empty", 0
+    if all(0x20 <= byte <= 0x7E for byte in key):
+        return len(key), "ascii", len(key)
+    if len(key) % 2 == 0:
+        try:
+            decoded = key.decode("utf-16be")
+        except UnicodeDecodeError:
+            pass
+        else:
+            if decoded.isprintable():
+                return len(key), "utf-16be", len(decoded)
+    return len(key), "binary", None

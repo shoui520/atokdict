@@ -64,6 +64,25 @@ For `DIC` and `DAR`, observed descriptors include fixed early regions such as
 `0x300+0x100`, `0x400+0x300`, and `0x700+0x200`, plus later small region descriptors in some
 files. `DSY` files do not appear to use this descriptor layout.
 
+## `DRT` Primary Index Table
+
+Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20
+bytes. Each record points into descriptor `0x3a8`, and all observed pointers are monotonic.
+
+Observed 20-byte record:
+
+| Relative offset | Size | Observation |
+| --- | ---: | --- |
+| `+0x00` | 4 | Separator key bytes. Encoding varies; observed ASCII, UTF-16BE-like, and binary-looking values. |
+| `+0x04` | 4 | Big-endian absolute offset into descriptor `0x3a8`. |
+| `+0x08` | 4 | Unknown numeric field. |
+| `+0x0c` | 4 | Unknown numeric field. |
+| `+0x10` | 4 | Unknown numeric field. |
+
+Adjacent primary-index offsets partition descriptor `0x3a8`; the final primary block ends at
+descriptor `0x3a8` EOF. The `drt-primary-index` command reports redacted separator-key hashes,
+encoding guesses, unknown numeric fields, offsets, and block sizes.
+
 ## `DRT` Final-Section Root Index
 
 Many Japanese `DRT` files with seven parsed section descriptors use the final section as a
