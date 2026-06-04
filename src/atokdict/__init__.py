@@ -10,7 +10,8 @@ from atokdict.drt import parse_drt_primary_index
 from atokdict.drt import summarize_drt_primary_blocks
 from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import parse_drt_root_index, summarize_drt_root_child_blocks
-from atokdict.dsy import DsyMap, DsyRegionDescriptor, parse_dsy_map
+from atokdict.dsy import DsyMap, DsyRegionDescriptor, DsyRegionSummary
+from atokdict.dsy import parse_dsy_map, summarize_dsy_regions
 from atokdict.linkage import DrtKeywordRange, DrtKeywordRangeSummary
 from atokdict.linkage import DrtPrimaryKeywordRange, DrtPrimaryKeywordRangeSummary
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
@@ -29,6 +30,7 @@ __all__ = [
     "DrtRootIndexEntry",
     "DsyMap",
     "DsyRegionDescriptor",
+    "DsyRegionSummary",
     "DrtKeywordRange",
     "DrtKeywordRangeSummary",
     "DrtPrimaryKeywordRange",
@@ -44,4 +46,5 @@ __all__ = [
     "summarize_drt_primary_blocks",
     "summarize_drt_primary_segments",
     "summarize_drt_root_child_blocks",
+    "summarize_dsy_regions",
 ]

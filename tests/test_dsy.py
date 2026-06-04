@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from atokdict.dsy import parse_dsy_map
+from atokdict.dsy import parse_dsy_map, summarize_dsy_regions
 
 
 def test_parse_synthetic_dsy_map(tmp_path: Path) -> None:
@@ -30,9 +30,18 @@ def test_parse_synthetic_dsy_map(tmp_path: Path) -> None:
     _write_region(data, 0x338, 0x560, 0x100)
     _write_region(data, 0x340, 0x660, 0x20)
     _write_region(data, 0x348, 0x680, 0xE0)
+    data[0x360:0x560] = b"".join(
+        value.to_bytes(2, "big") for value in range(1, 257)
+    )
+    data[0x680:0x686] = (
+        (0xFFFF).to_bytes(2, "big")
+        + (0xFFFE).to_bytes(2, "big")
+        + (0xFFFD).to_bytes(2, "big")
+    )
     path.write_bytes(data)
 
     dsy_map = parse_dsy_map(path)
+    regions = summarize_dsy_regions(path)
 
     assert dsy_map.size == 0x760
     assert dsy_map.metadata_words["0x300"] == 0x004000FF
@@ -52,6 +61,12 @@ def test_parse_synthetic_dsy_map(tmp_path: Path) -> None:
         0x20,
         0xE0,
     ]
+    assert regions[0].region0_is_u16_permutation_1_to_256 is True
+    assert regions[0].u16_word_count == 256
+    assert regions[0].u16_nonzero_count == 256
+    assert regions[0].u16_unique_count == 256
+    assert regions[3].marker_counts["0xffff"] == 1
+    assert regions[3].marker_first_offsets["0xfffe"] == 2
 
 
 def _write_region(data: bytearray, descriptor_offset: int, offset: int, length: int) -> None:

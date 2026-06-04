@@ -89,6 +89,12 @@ Four non-zero regions are observed. They are contiguous, start at `0x360`, and e
 first region is always `0x360 + 0x200`. The `dsy-map` command reports these fields and region
 descriptors without dumping region bytes.
 
+Region 0 is always 512 bytes and, when interpreted as 256 big-endian 16-bit words, is a
+permutation of values `1..256`. Region 3 prefixes commonly contain the same marker words observed
+in DRT child/primary diagnostics: `0xffff`, `0xfffe`, and `0xfffd`. The `dsy-regions` command
+reports bounded region diagnostics: prefix hashes, byte ratios, marker positions/counts, 16-bit
+word counts, and whether region 0 is the observed `1..256` permutation.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20

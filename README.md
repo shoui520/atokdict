@@ -25,6 +25,7 @@ python -m atokdict drt-root-children /path/to/FILE.DRT --limit 20
 python -m atokdict drt-keyword-ranges /path/to/FILE.DRT --limit 20
 python -m atokdict drt-primary-keyword-ranges /path/to/FILE.DRT --limit 20
 python -m atokdict dsy-map /path/to/FILE.DSY
+python -m atokdict dsy-regions /path/to/FILE.DSY
 python -m atokdict inventory /path/to/dicts --json
 python -m atokdict setup /path/to/SETUP.INI
 python -m atokdict companion-header /path/to/FILE.DRW
