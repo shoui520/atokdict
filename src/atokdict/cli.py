@@ -16,6 +16,7 @@ from atokdict.drt import parse_drt_root_index
 from atokdict.drt import summarize_drt_primary_blocks
 from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
+from atokdict.dsy import parse_dsy_map
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
@@ -91,6 +92,11 @@ def main(argv: list[str] | None = None) -> int:
     drt_primary_keyword_parser.add_argument("drt_path", type=Path)
     drt_primary_keyword_parser.add_argument("drw_path", type=Path, nargs="?")
     drt_primary_keyword_parser.add_argument("--limit", type=int, default=20)
+
+    dsy_map_parser = subparsers.add_parser(
+        "dsy-map", help="parse the observed DSY metadata and region map"
+    )
+    dsy_map_parser.add_argument("path", type=Path)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -196,6 +202,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "drt-primary-keyword-ranges":
         summary = summarize_drt_primary_keyword_ranges(args.drt_path, args.drw_path)
         print(json.dumps(summary.to_dict(entry_limit=args.limit), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-map":
+        print(json.dumps(parse_dsy_map(args.path).to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":

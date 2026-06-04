@@ -64,6 +64,31 @@ For `DIC` and `DAR`, observed descriptors include fixed early regions such as
 `0x300+0x100`, `0x400+0x300`, and `0x700+0x200`, plus later small region descriptors in some
 files. `DSY` files do not appear to use this descriptor layout.
 
+## `DSY` Metadata And Region Map
+
+Observed `DSY` files do not use the `DIC`/`DAR`/`DRT` descriptor area, but four observed files do
+share a fixed metadata/map area beginning at `0x300`.
+
+Observed `0x300` metadata words:
+
+| Offset | Size | Observation |
+| --- | ---: | --- |
+| `0x300` | 4 | Constant `0x004000ff` in observed files. |
+| `0x304` | 4 | Constant `1` in observed files. |
+| `0x308` | 4 | Constant `0x00ffffff` in observed files. |
+| `0x30c` | 4 | Count-like field. Observed `1`, `0x139`, `0x339`, `0xaf9`. |
+| `0x310` | 4 | Constant `0x00200200` in observed files. |
+| `0x314` | 4 | High 16 bits are `0xffff`; low 16 bits are count-like. |
+| `0x318` | 4 | Constant `0x00080000` in observed files. |
+| `0x31c` | 4 | Constant `0x00010000` in observed files. |
+| `0x320..0x328` | 12 | Zero-filled in observed files. |
+| `0x32c` | 4 | Constant `4` in observed files. |
+
+The region table at `0x330..0x360` consists of 8-byte big-endian `(offset, byte_length)` pairs.
+Four non-zero regions are observed. They are contiguous, start at `0x360`, and end at EOF. The
+first region is always `0x360 + 0x200`. The `dsy-map` command reports these fields and region
+descriptors without dumping region bytes.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20
