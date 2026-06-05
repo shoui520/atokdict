@@ -397,6 +397,62 @@ class DsyRegion3FirstRunSummary:
         }
 
 
+@dataclass(frozen=True)
+class DsyRegion3Gap4SlotSummary:
+    slot_index: int
+    value_count: int
+    min_value: int | None
+    max_value: int | None
+    unique_value_count: int
+    even_value_count: int
+    le_0x0100_count: int
+    zero_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "slot_index": self.slot_index,
+            "value_count": self.value_count,
+            "min_value": self.min_value,
+            "max_value": self.max_value,
+            "unique_value_count": self.unique_value_count,
+            "even_value_count": self.even_value_count,
+            "le_0x0100_count": self.le_0x0100_count,
+            "zero_count": self.zero_count,
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3Gap4Summary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    first_run_start_word_index: int
+    first_run_end_word_index: int
+    first_run_sentinel_word_count: int
+    gap4_chunk_count: int
+    slot_summaries: list[DsyRegion3Gap4SlotSummary]
+    slot_0_equals_slot_1_count: int
+    slot_0_le_slot_1_count: int
+    slot_0_and_slot_1_even_count: int
+    slot_2_le_0x0100_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "first_run_start_word_index": self.first_run_start_word_index,
+            "first_run_end_word_index": self.first_run_end_word_index,
+            "first_run_sentinel_word_count": self.first_run_sentinel_word_count,
+            "gap4_chunk_count": self.gap4_chunk_count,
+            "slot_summaries": [slot.to_dict() for slot in self.slot_summaries],
+            "slot_0_equals_slot_1_count": self.slot_0_equals_slot_1_count,
+            "slot_0_le_slot_1_count": self.slot_0_le_slot_1_count,
+            "slot_0_and_slot_1_even_count": self.slot_0_and_slot_1_even_count,
+            "slot_2_le_0x0100_count": self.slot_2_le_0x0100_count,
+        }
+
+
 def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
     path = Path(path_or_file)
     header = parse_header(path)
@@ -760,6 +816,51 @@ def summarize_dsy_region3_first_run(
     )
 
 
+def summarize_dsy_region3_gap4(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3Gap4Summary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    first_run = _first_dsy_region3_sentinel_run(words, high_word_minimum)
+    sentinel_positions = [
+        word_index
+        for word_index in range(first_run.start_word_index, first_run.end_word_index + 1)
+        if words[word_index] >= high_word_minimum
+    ]
+    chunks = [
+        (words[earlier + 1], words[earlier + 2], words[earlier + 3])
+        for earlier, later in zip(sentinel_positions, sentinel_positions[1:])
+        if later - earlier == 4
+    ]
+    slots = [
+        [chunk[slot_index] for chunk in chunks]
+        for slot_index in range(3)
+    ]
+    return DsyRegion3Gap4Summary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        first_run_start_word_index=first_run.start_word_index,
+        first_run_end_word_index=first_run.end_word_index,
+        first_run_sentinel_word_count=first_run.value_count,
+        gap4_chunk_count=len(chunks),
+        slot_summaries=[
+            _summarize_dsy_region3_gap4_slot(index, values)
+            for index, values in enumerate(slots)
+        ],
+        slot_0_equals_slot_1_count=sum(1 for chunk in chunks if chunk[0] == chunk[1]),
+        slot_0_le_slot_1_count=sum(1 for chunk in chunks if chunk[0] <= chunk[1]),
+        slot_0_and_slot_1_even_count=sum(
+            1 for chunk in chunks if chunk[0] % 2 == 0 and chunk[1] % 2 == 0
+        ),
+        slot_2_le_0x0100_count=sum(1 for chunk in chunks if chunk[2] <= 0x0100),
+    )
+
+
 def summarize_dsy_regions(
     path_or_file: str | Path,
     *,
@@ -893,6 +994,37 @@ def _descending_high_word_runs(
             raw_runs
         )
     ]
+
+
+def _first_dsy_region3_sentinel_run(
+    words: list[int],
+    high_word_minimum: int,
+) -> DsyRegion3SentinelRun:
+    high_words = [
+        (word_index, value)
+        for word_index, value in enumerate(words)
+        if value >= high_word_minimum
+    ]
+    runs = _descending_high_word_runs(high_words)
+    if not runs:
+        raise ValueError("DSY region 3 prefix has no high-word sentinel runs")
+    return runs[0]
+
+
+def _summarize_dsy_region3_gap4_slot(
+    slot_index: int,
+    values: list[int],
+) -> DsyRegion3Gap4SlotSummary:
+    return DsyRegion3Gap4SlotSummary(
+        slot_index=slot_index,
+        value_count=len(values),
+        min_value=min(values) if values else None,
+        max_value=max(values) if values else None,
+        unique_value_count=len(set(values)),
+        even_value_count=sum(1 for value in values if value % 2 == 0),
+        le_0x0100_count=sum(1 for value in values if value <= 0x0100),
+        zero_count=sum(1 for value in values if value == 0),
+    )
 
 
 def _u16_words(data: bytes) -> list[int]:

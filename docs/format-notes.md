@@ -122,6 +122,10 @@ The `dsy-region3-first-run` command reports aggregate shape for that first run: 
 histogram, sentinel count, and non-sentinel filler-word statistics. It does not dump the local
 word sequence.
 
+The `dsy-region3-gap4` command summarizes the dominant gap-4 chunks inside the first sentinel run.
+It reports slot-level aggregate statistics for the three non-sentinel words between adjacent
+descending sentinels, without emitting the word triples.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20

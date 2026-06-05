@@ -19,6 +19,7 @@ from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index, summarize_dsy_regions
 from atokdict.dsy import summarize_dsy_region1_records
 from atokdict.dsy import summarize_dsy_region3_first_run
+from atokdict.dsy import summarize_dsy_region3_gap4
 from atokdict.dsy import summarize_dsy_region3_prefix
 from atokdict.dsy import summarize_dsy_region3_sentinels
 from atokdict.installer import parse_setup_ini
@@ -144,6 +145,12 @@ def main(argv: list[str] | None = None) -> int:
         help="summarize the first high-word run in the DSY region-3 prefix",
     )
     dsy_region3_first_run_parser.add_argument("path", type=Path)
+
+    dsy_region3_gap4_parser = subparsers.add_parser(
+        "dsy-region3-gap4",
+        help="summarize gap-4 chunks in the DSY region-3 first sentinel run",
+    )
+    dsy_region3_gap4_parser.add_argument("path", type=Path)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -295,6 +302,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "dsy-region3-first-run":
         first_run = summarize_dsy_region3_first_run(args.path)
         print(json.dumps(first_run.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-region3-gap4":
+        gap4 = summarize_dsy_region3_gap4(args.path)
+        print(json.dumps(gap4.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":

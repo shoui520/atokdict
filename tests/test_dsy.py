@@ -5,6 +5,7 @@ from pathlib import Path
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
 from atokdict.dsy import summarize_dsy_region3_first_run
+from atokdict.dsy import summarize_dsy_region3_gap4
 from atokdict.dsy import summarize_dsy_region3_prefix
 from atokdict.dsy import summarize_dsy_region3_sentinels
 
@@ -313,6 +314,56 @@ def test_summarize_synthetic_dsy_region3_first_run(tmp_path: Path) -> None:
     assert summary.filler_even_value_count == 3
     assert summary.filler_le_0x0100_count == 3
     assert summary.filler_zero_count == 0
+
+
+def test_summarize_synthetic_dsy_region3_gap4(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=1)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    data[0x560:0x568] = (8).to_bytes(4, "big") + (0).to_bytes(4, "big")
+
+    prefix_words = [
+        28,
+        1,
+        0xFFFF,
+        2,
+        2,
+        300,
+        0xFFFE,
+        4,
+        8,
+        200,
+        0xFFFD,
+        123,
+        0xFFF0,
+        0,
+    ]
+    data[0x5C0:0x5DC] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_gap4(path)
+
+    assert summary.first_run_start_word_index == 2
+    assert summary.first_run_end_word_index == 10
+    assert summary.first_run_sentinel_word_count == 3
+    assert summary.gap4_chunk_count == 2
+    assert summary.slot_0_equals_slot_1_count == 1
+    assert summary.slot_0_le_slot_1_count == 2
+    assert summary.slot_0_and_slot_1_even_count == 2
+    assert summary.slot_2_le_0x0100_count == 1
+    slots = summary.slot_summaries
+    assert [slot.value_count for slot in slots] == [2, 2, 2]
+    assert [slot.min_value for slot in slots] == [2, 2, 200]
+    assert [slot.max_value for slot in slots] == [4, 8, 300]
+    assert [slot.unique_value_count for slot in slots] == [2, 2, 2]
+    assert [slot.le_0x0100_count for slot in slots] == [2, 2, 1]
 
 
 def _write_region(data: bytearray, descriptor_offset: int, offset: int, length: int) -> None:
