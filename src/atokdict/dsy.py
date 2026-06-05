@@ -662,6 +662,72 @@ class DsyRegion3RunIndexLinkSummary:
 
 
 @dataclass(frozen=True)
+class DsyRegion3ExtraRunSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    first_run_interval_count: int
+    first_run_interval_ordinal_min: int | None
+    first_run_interval_ordinal_max: int | None
+    descending_run_count: int
+    later_run_count: int
+    extra_later_run_count: int
+    extra_run_index_min: int | None
+    extra_run_index_max: int | None
+    extra_run_indexes_are_contiguous: bool
+    extra_runs_after_first_run_interval_range_count: int
+    extra_run_index_delta_counts: dict[str, int]
+    extra_run_value_count_min: int | None
+    extra_run_value_count_max: int | None
+    extra_run_value_count_counts: dict[str, int]
+    extra_run_word_span_min: int | None
+    extra_run_word_span_max: int | None
+    extra_run_start_word_index_min: int | None
+    extra_run_start_word_index_max: int | None
+    extra_run_end_word_index_min: int | None
+    extra_run_end_word_index_max: int | None
+    extra_run_start_word_delta_counts: dict[str, int]
+    extra_run_value_ordinal_min: int | None
+    extra_run_value_ordinal_max: int | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "first_run_interval_count": self.first_run_interval_count,
+            "first_run_interval_ordinal_min": self.first_run_interval_ordinal_min,
+            "first_run_interval_ordinal_max": self.first_run_interval_ordinal_max,
+            "descending_run_count": self.descending_run_count,
+            "later_run_count": self.later_run_count,
+            "extra_later_run_count": self.extra_later_run_count,
+            "extra_run_index_min": self.extra_run_index_min,
+            "extra_run_index_max": self.extra_run_index_max,
+            "extra_run_indexes_are_contiguous": (
+                self.extra_run_indexes_are_contiguous
+            ),
+            "extra_runs_after_first_run_interval_range_count": (
+                self.extra_runs_after_first_run_interval_range_count
+            ),
+            "extra_run_index_delta_counts": self.extra_run_index_delta_counts,
+            "extra_run_value_count_min": self.extra_run_value_count_min,
+            "extra_run_value_count_max": self.extra_run_value_count_max,
+            "extra_run_value_count_counts": self.extra_run_value_count_counts,
+            "extra_run_word_span_min": self.extra_run_word_span_min,
+            "extra_run_word_span_max": self.extra_run_word_span_max,
+            "extra_run_start_word_index_min": self.extra_run_start_word_index_min,
+            "extra_run_start_word_index_max": self.extra_run_start_word_index_max,
+            "extra_run_end_word_index_min": self.extra_run_end_word_index_min,
+            "extra_run_end_word_index_max": self.extra_run_end_word_index_max,
+            "extra_run_start_word_delta_counts": (
+                self.extra_run_start_word_delta_counts
+            ),
+            "extra_run_value_ordinal_min": self.extra_run_value_ordinal_min,
+            "extra_run_value_ordinal_max": self.extra_run_value_ordinal_max,
+        }
+
+
+@dataclass(frozen=True)
 class DsyRegion3Gap4SlotSummary:
     slot_index: int
     value_count: int
@@ -1366,6 +1432,42 @@ def summarize_dsy_region3_run_index_links(
     )
 
 
+def summarize_dsy_region3_extra_runs(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3ExtraRunSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    high_words = [
+        (word_index, value)
+        for word_index, value in enumerate(words)
+        if value >= high_word_minimum
+    ]
+    runs = _descending_high_word_runs(high_words)
+    if not runs:
+        raise ValueError("DSY region 3 prefix has no high-word sentinel runs")
+
+    first_run = runs[0]
+    intervals = _dsy_region3_first_run_intervals(
+        words,
+        first_run,
+        high_word_minimum,
+    )
+    interval_ordinals = {interval.ordinal for interval in intervals}
+    extra_runs = [run for run in runs[1:] if run.run_index not in interval_ordinals]
+    return _summarize_dsy_region3_extra_runs(
+        path=path,
+        dsy_map=dsy_map,
+        prefix_byte_length=len(prefix),
+        intervals=intervals,
+        descending_run_count=len(runs),
+        extra_runs=extra_runs,
+    )
+
+
 def summarize_dsy_region3_gap4(
     path_or_file: str | Path,
     *,
@@ -1724,6 +1826,99 @@ def _summarize_dsy_region3_run_index_category(
         ),
         linked_later_run_value_ordinal_max=(
             max(later_run_value_ordinals) if later_run_value_ordinals else None
+        ),
+    )
+
+
+def _summarize_dsy_region3_extra_runs(
+    *,
+    path: Path,
+    dsy_map: DsyMap,
+    prefix_byte_length: int,
+    intervals: list[_DsyRegion3FirstRunInterval],
+    descending_run_count: int,
+    extra_runs: list[DsyRegion3SentinelRun],
+) -> DsyRegion3ExtraRunSummary:
+    interval_ordinals = [interval.ordinal for interval in intervals]
+    extra_run_indexes = [run.run_index for run in extra_runs]
+    extra_run_value_counts = [run.value_count for run in extra_runs]
+    extra_run_word_spans = [
+        run.end_word_index - run.start_word_index + 1 for run in extra_runs
+    ]
+    extra_run_start_word_indexes = [run.start_word_index for run in extra_runs]
+    extra_run_end_word_indexes = [run.end_word_index for run in extra_runs]
+    extra_run_value_ordinals = [
+        ordinal
+        for run in extra_runs
+        for ordinal in (0xFFFF - run.start_value, 0xFFFF - run.end_value)
+    ]
+    first_interval_max = max(interval_ordinals) if interval_ordinals else None
+    expected_extra_indexes = (
+        list(range(min(extra_run_indexes), max(extra_run_indexes) + 1))
+        if extra_run_indexes
+        else []
+    )
+    return DsyRegion3ExtraRunSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=prefix_byte_length,
+        first_run_interval_count=len(intervals),
+        first_run_interval_ordinal_min=(
+            min(interval_ordinals) if interval_ordinals else None
+        ),
+        first_run_interval_ordinal_max=first_interval_max,
+        descending_run_count=descending_run_count,
+        later_run_count=max(descending_run_count - 1, 0),
+        extra_later_run_count=len(extra_runs),
+        extra_run_index_min=min(extra_run_indexes) if extra_run_indexes else None,
+        extra_run_index_max=max(extra_run_indexes) if extra_run_indexes else None,
+        extra_run_indexes_are_contiguous=extra_run_indexes == expected_extra_indexes,
+        extra_runs_after_first_run_interval_range_count=sum(
+            1
+            for run_index in extra_run_indexes
+            if first_interval_max is not None and run_index > first_interval_max
+        ),
+        extra_run_index_delta_counts=_string_key_counts(
+            later - earlier
+            for earlier, later in zip(extra_run_indexes, extra_run_indexes[1:])
+        ),
+        extra_run_value_count_min=(
+            min(extra_run_value_counts) if extra_run_value_counts else None
+        ),
+        extra_run_value_count_max=(
+            max(extra_run_value_counts) if extra_run_value_counts else None
+        ),
+        extra_run_value_count_counts=_string_key_counts(extra_run_value_counts),
+        extra_run_word_span_min=(
+            min(extra_run_word_spans) if extra_run_word_spans else None
+        ),
+        extra_run_word_span_max=(
+            max(extra_run_word_spans) if extra_run_word_spans else None
+        ),
+        extra_run_start_word_index_min=(
+            min(extra_run_start_word_indexes) if extra_run_start_word_indexes else None
+        ),
+        extra_run_start_word_index_max=(
+            max(extra_run_start_word_indexes) if extra_run_start_word_indexes else None
+        ),
+        extra_run_end_word_index_min=(
+            min(extra_run_end_word_indexes) if extra_run_end_word_indexes else None
+        ),
+        extra_run_end_word_index_max=(
+            max(extra_run_end_word_indexes) if extra_run_end_word_indexes else None
+        ),
+        extra_run_start_word_delta_counts=_string_key_counts(
+            later - earlier
+            for earlier, later in zip(
+                extra_run_start_word_indexes,
+                extra_run_start_word_indexes[1:],
+            )
+        ),
+        extra_run_value_ordinal_min=(
+            min(extra_run_value_ordinals) if extra_run_value_ordinals else None
+        ),
+        extra_run_value_ordinal_max=(
+            max(extra_run_value_ordinals) if extra_run_value_ordinals else None
         ),
     )
 

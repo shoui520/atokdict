@@ -36,6 +36,7 @@ python -m atokdict dsy-region3-first-run-outliers /path/to/FILE.DSY
 python -m atokdict dsy-region3-gap4 /path/to/FILE.DSY
 python -m atokdict dsy-region3-gap4-links /path/to/FILE.DSY
 python -m atokdict dsy-region3-run-index-links /path/to/FILE.DSY
+python -m atokdict dsy-region3-extra-runs /path/to/FILE.DSY
 python -m atokdict inventory /path/to/dicts --json
 python -m atokdict setup /path/to/SETUP.INI
 python -m atokdict companion-header /path/to/FILE.DRW

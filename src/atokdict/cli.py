@@ -18,6 +18,7 @@ from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index, summarize_dsy_regions
 from atokdict.dsy import summarize_dsy_region1_records
+from atokdict.dsy import summarize_dsy_region3_extra_runs
 from atokdict.dsy import summarize_dsy_region3_first_run
 from atokdict.dsy import summarize_dsy_region3_first_run_links
 from atokdict.dsy import summarize_dsy_region3_first_run_outliers
@@ -179,6 +180,12 @@ def main(argv: list[str] | None = None) -> int:
         help="compare first-run interval ordinals to later region-3 sentinel runs",
     )
     dsy_region3_run_index_links_parser.add_argument("path", type=Path)
+
+    dsy_region3_extra_runs_parser = subparsers.add_parser(
+        "dsy-region3-extra-runs",
+        help="summarize later region-3 runs outside the first-run interval range",
+    )
+    dsy_region3_extra_runs_parser.add_argument("path", type=Path)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -355,6 +362,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "dsy-region3-run-index-links":
         run_links = summarize_dsy_region3_run_index_links(args.path)
         print(json.dumps(run_links.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-region3-extra-runs":
+        extra_runs = summarize_dsy_region3_extra_runs(args.path)
+        print(json.dumps(extra_runs.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":

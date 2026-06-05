@@ -4,6 +4,7 @@ from pathlib import Path
 
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
+from atokdict.dsy import summarize_dsy_region3_extra_runs
 from atokdict.dsy import summarize_dsy_region3_first_run
 from atokdict.dsy import summarize_dsy_region3_first_run_links
 from atokdict.dsy import summarize_dsy_region3_first_run_outliers
@@ -542,6 +543,84 @@ def test_summarize_synthetic_dsy_region3_run_index_links(tmp_path: Path) -> None
     assert late.linked_later_run_value_count_counts == {"3": 1}
     assert late.linked_later_run_value_ordinal_min == 31
     assert late.linked_later_run_value_ordinal_max == 33
+
+
+def test_summarize_synthetic_dsy_region3_extra_runs(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=1)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    data[0x560:0x568] = (8).to_bytes(4, "big") + (0).to_bytes(4, "big")
+
+    prefix_words = [
+        68,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xFFFF,
+        2,
+        0xFFFE,
+        4,
+        4,
+        99,
+        0xFFFD,
+        6,
+        55,
+        6,
+        77,
+        88,
+        0xFFFC,
+        0,
+        0xFFF0,
+        0,
+        0xFFEF,
+        0,
+        0xFFE0,
+        0,
+        0xFFDF,
+        0,
+        0xFFDE,
+        0,
+        0xFFD0,
+        0,
+    ]
+    data[0x5C0:0x604] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_extra_runs(path)
+
+    assert summary.first_run_interval_count == 3
+    assert summary.first_run_interval_ordinal_min == 0
+    assert summary.first_run_interval_ordinal_max == 2
+    assert summary.descending_run_count == 4
+    assert summary.later_run_count == 3
+    assert summary.extra_later_run_count == 1
+    assert summary.extra_run_index_min == 3
+    assert summary.extra_run_index_max == 3
+    assert summary.extra_run_indexes_are_contiguous is True
+    assert summary.extra_runs_after_first_run_interval_range_count == 1
+    assert summary.extra_run_index_delta_counts == {}
+    assert summary.extra_run_value_count_min == 1
+    assert summary.extra_run_value_count_max == 1
+    assert summary.extra_run_value_count_counts == {"1": 1}
+    assert summary.extra_run_word_span_min == 1
+    assert summary.extra_run_word_span_max == 1
+    assert summary.extra_run_start_word_index_min == 32
+    assert summary.extra_run_start_word_index_max == 32
+    assert summary.extra_run_end_word_index_min == 32
+    assert summary.extra_run_end_word_index_max == 32
+    assert summary.extra_run_value_ordinal_min == 47
+    assert summary.extra_run_value_ordinal_max == 47
 
 
 def test_summarize_synthetic_dsy_region3_gap4(tmp_path: Path) -> None:
