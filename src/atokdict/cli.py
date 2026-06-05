@@ -33,6 +33,7 @@ from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
+from atokdict.linkage import summarize_dsy_dsz_active_class_links
 from atokdict.textscan import scan_cp932_runs, scan_utf16be_runs
 
 
@@ -104,6 +105,13 @@ def main(argv: list[str] | None = None) -> int:
     drt_primary_keyword_parser.add_argument("drt_path", type=Path)
     drt_primary_keyword_parser.add_argument("drw_path", type=Path, nargs="?")
     drt_primary_keyword_parser.add_argument("--limit", type=int, default=20)
+
+    dsy_dsz_active_class_parser = subparsers.add_parser(
+        "dsy-dsz-active-classes",
+        help="compare DSY region-1 counts with DSZ active-class order",
+    )
+    dsy_dsz_active_class_parser.add_argument("dsy_path", type=Path)
+    dsy_dsz_active_class_parser.add_argument("dsz_path", type=Path, nargs="?")
 
     dsy_map_parser = subparsers.add_parser(
         "dsy-map", help="parse the observed DSY metadata and region map"
@@ -305,6 +313,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "drt-primary-keyword-ranges":
         summary = summarize_drt_primary_keyword_ranges(args.drt_path, args.drw_path)
         print(json.dumps(summary.to_dict(entry_limit=args.limit), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-dsz-active-classes":
+        summary = summarize_dsy_dsz_active_class_links(args.dsy_path, args.dsz_path)
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "dsy-map":

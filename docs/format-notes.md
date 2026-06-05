@@ -337,3 +337,10 @@ For `SANRUI`, the DSY metadata/table count `825` matches the number of DSZ class
 groups and words. Because DSY region 1 reserves its first table row as a header-like record, this
 leaves 824 indexed region-1 payload records. This is a useful lead for linking DSY access records
 to active DSZ classes, but the payload-record order is not assigned yet.
+
+The `dsy-dsz-active-classes` command compares DSY region-1 record counts and record lengths with
+DSZ active-class order. For `SANRUI`, DSY payload record lengths correlate strongly with DSZ word
+counts when payload records are aligned to sorted active DSZ class IDs after dropping the final
+active class. This suggests region 1 is an active-class access table, and record length is driven
+primarily by class word count. `THESAURUS.DSY` is a stub and does not expose a compatible region-1
+payload table.
