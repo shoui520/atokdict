@@ -6,6 +6,7 @@ from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
 from atokdict.dsy import summarize_dsy_region3_first_run
 from atokdict.dsy import summarize_dsy_region3_gap4
+from atokdict.dsy import summarize_dsy_region3_gap4_links
 from atokdict.dsy import summarize_dsy_region3_prefix
 from atokdict.dsy import summarize_dsy_region3_sentinels
 
@@ -364,6 +365,68 @@ def test_summarize_synthetic_dsy_region3_gap4(tmp_path: Path) -> None:
     assert [slot.max_value for slot in slots] == [4, 8, 300]
     assert [slot.unique_value_count for slot in slots] == [2, 2, 2]
     assert [slot.le_0x0100_count for slot in slots] == [2, 2, 1]
+
+
+def test_summarize_synthetic_dsy_region3_gap4_links(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=6)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    region1_records = [
+        (48, 0),
+        (1, 1),
+        (1, 2),
+        (1, 3),
+        (1, 4),
+        (1, 5),
+    ]
+    data[0x560:0x590] = b"".join(
+        first.to_bytes(4, "big") + second.to_bytes(4, "big")
+        for first, second in region1_records
+    )
+
+    prefix_words = [
+        36,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xFFFF,
+        3,
+        3,
+        20,
+        0xFFFE,
+        4,
+        5,
+        22,
+        0xFFFD,
+        0,
+    ]
+    data[0x5C0:0x5E4] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_gap4_links(path)
+
+    assert summary.region1_record_count == 5
+    assert summary.prefix_word_count == 18
+    assert summary.gap4_chunk_count == 2
+    assert summary.slot_1_minus_slot_0_counts == {"0": 1, "1": 1}
+    slots = summary.slot_summaries
+    assert [slot.times2_plus2_anchor_count for slot in slots] == [1, 2, 0]
+    assert [slot.times2_plus6_next_count for slot in slots] == [1, 2, 0]
+    assert [slot.region1_record_index_range_count for slot in slots] == [2, 2, 0]
+    assert [slot.prefix_word_index_range_count for slot in slots] == [2, 2, 0]
+    assert [slot.prefix_byte_offset_range_count for slot in slots] == [2, 2, 2]
+    assert [slot.adjacent_delta_counts for slot in slots] == [{"1": 1}, {"2": 1}, {"2": 1}]
 
 
 def _write_region(data: bytearray, descriptor_offset: int, offset: int, length: int) -> None:

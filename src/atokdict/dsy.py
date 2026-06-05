@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 from atokdict.container import parse_header
 from atokdict.drt import CHILD_MARKERS
@@ -453,6 +453,80 @@ class DsyRegion3Gap4Summary:
         }
 
 
+@dataclass(frozen=True)
+class DsyRegion3Gap4LinkSlotSummary:
+    slot_index: int
+    value_count: int
+    region1_record_index_range_count: int
+    prefix_word_index_range_count: int
+    prefix_byte_offset_range_count: int
+    first_run_word_index_range_count: int
+    equals_anchor_word_index_count: int
+    equals_next_word_index_count: int
+    times2_plus2_anchor_count: int
+    times2_plus6_next_count: int
+    adjacent_increase_count: int
+    adjacent_non_decrease_count: int
+    adjacent_decrease_count: int
+    adjacent_delta_counts: dict[str, int]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "slot_index": self.slot_index,
+            "value_count": self.value_count,
+            "region1_record_index_range_count": (
+                self.region1_record_index_range_count
+            ),
+            "prefix_word_index_range_count": self.prefix_word_index_range_count,
+            "prefix_byte_offset_range_count": self.prefix_byte_offset_range_count,
+            "first_run_word_index_range_count": self.first_run_word_index_range_count,
+            "equals_anchor_word_index_count": self.equals_anchor_word_index_count,
+            "equals_next_word_index_count": self.equals_next_word_index_count,
+            "times2_plus2_anchor_count": self.times2_plus2_anchor_count,
+            "times2_plus6_next_count": self.times2_plus6_next_count,
+            "adjacent_increase_count": self.adjacent_increase_count,
+            "adjacent_non_decrease_count": self.adjacent_non_decrease_count,
+            "adjacent_decrease_count": self.adjacent_decrease_count,
+            "adjacent_delta_counts": self.adjacent_delta_counts,
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3Gap4LinkSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    prefix_word_count: int
+    region1_record_count: int
+    first_run_start_word_index: int
+    first_run_end_word_index: int
+    gap4_chunk_count: int
+    slot_summaries: list[DsyRegion3Gap4LinkSlotSummary]
+    slot_1_minus_slot_0_counts: dict[str, int]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "prefix_word_count": self.prefix_word_count,
+            "region1_record_count": self.region1_record_count,
+            "first_run_start_word_index": self.first_run_start_word_index,
+            "first_run_end_word_index": self.first_run_end_word_index,
+            "gap4_chunk_count": self.gap4_chunk_count,
+            "slot_summaries": [slot.to_dict() for slot in self.slot_summaries],
+            "slot_1_minus_slot_0_counts": self.slot_1_minus_slot_0_counts,
+        }
+
+
+@dataclass(frozen=True)
+class _DsyRegion3Gap4Chunk:
+    ordinal: int
+    anchor_word_index: int
+    next_word_index: int
+    values: tuple[int, int, int]
+
+
 def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
     path = Path(path_or_file)
     header = parse_header(path)
@@ -826,18 +900,9 @@ def summarize_dsy_region3_gap4(
     prefix = _read_dsy_region3_prefix(path, dsy_map)
     words = _u16_words(prefix)
     first_run = _first_dsy_region3_sentinel_run(words, high_word_minimum)
-    sentinel_positions = [
-        word_index
-        for word_index in range(first_run.start_word_index, first_run.end_word_index + 1)
-        if words[word_index] >= high_word_minimum
-    ]
-    chunks = [
-        (words[earlier + 1], words[earlier + 2], words[earlier + 3])
-        for earlier, later in zip(sentinel_positions, sentinel_positions[1:])
-        if later - earlier == 4
-    ]
+    chunks = _dsy_region3_gap4_chunks(words, first_run, high_word_minimum)
     slots = [
-        [chunk[slot_index] for chunk in chunks]
+        [chunk.values[slot_index] for chunk in chunks]
         for slot_index in range(3)
     ]
     return DsyRegion3Gap4Summary(
@@ -852,12 +917,58 @@ def summarize_dsy_region3_gap4(
             _summarize_dsy_region3_gap4_slot(index, values)
             for index, values in enumerate(slots)
         ],
-        slot_0_equals_slot_1_count=sum(1 for chunk in chunks if chunk[0] == chunk[1]),
-        slot_0_le_slot_1_count=sum(1 for chunk in chunks if chunk[0] <= chunk[1]),
-        slot_0_and_slot_1_even_count=sum(
-            1 for chunk in chunks if chunk[0] % 2 == 0 and chunk[1] % 2 == 0
+        slot_0_equals_slot_1_count=sum(
+            1 for chunk in chunks if chunk.values[0] == chunk.values[1]
         ),
-        slot_2_le_0x0100_count=sum(1 for chunk in chunks if chunk[2] <= 0x0100),
+        slot_0_le_slot_1_count=sum(
+            1 for chunk in chunks if chunk.values[0] <= chunk.values[1]
+        ),
+        slot_0_and_slot_1_even_count=sum(
+            1
+            for chunk in chunks
+            if chunk.values[0] % 2 == 0 and chunk.values[1] % 2 == 0
+        ),
+        slot_2_le_0x0100_count=sum(
+            1 for chunk in chunks if chunk.values[2] <= 0x0100
+        ),
+    )
+
+
+def summarize_dsy_region3_gap4_links(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3Gap4LinkSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    region1_index = parse_dsy_region1_index(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    first_run = _first_dsy_region3_sentinel_run(words, high_word_minimum)
+    chunks = _dsy_region3_gap4_chunks(words, first_run, high_word_minimum)
+    return DsyRegion3Gap4LinkSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        prefix_word_count=len(words),
+        region1_record_count=len(region1_index.entries),
+        first_run_start_word_index=first_run.start_word_index,
+        first_run_end_word_index=first_run.end_word_index,
+        gap4_chunk_count=len(chunks),
+        slot_summaries=[
+            _summarize_dsy_region3_gap4_link_slot(
+                slot_index=slot_index,
+                chunks=chunks,
+                region1_record_count=len(region1_index.entries),
+                prefix_word_count=len(words),
+                prefix_byte_length=len(prefix),
+                first_run=first_run,
+            )
+            for slot_index in range(3)
+        ],
+        slot_1_minus_slot_0_counts=_string_key_counts(
+            chunk.values[1] - chunk.values[0] for chunk in chunks
+        ),
     )
 
 
@@ -1011,6 +1122,34 @@ def _first_dsy_region3_sentinel_run(
     return runs[0]
 
 
+def _dsy_region3_gap4_chunks(
+    words: list[int],
+    first_run: DsyRegion3SentinelRun,
+    high_word_minimum: int,
+) -> list[_DsyRegion3Gap4Chunk]:
+    sentinel_positions = [
+        word_index
+        for word_index in range(first_run.start_word_index, first_run.end_word_index + 1)
+        if words[word_index] >= high_word_minimum
+    ]
+    return [
+        _DsyRegion3Gap4Chunk(
+            ordinal=ordinal,
+            anchor_word_index=earlier,
+            next_word_index=later,
+            values=(
+                words[earlier + 1],
+                words[earlier + 2],
+                words[earlier + 3],
+            ),
+        )
+        for ordinal, (earlier, later) in enumerate(
+            zip(sentinel_positions, sentinel_positions[1:])
+        )
+        if later - earlier == 4
+    ]
+
+
 def _summarize_dsy_region3_gap4_slot(
     slot_index: int,
     values: list[int],
@@ -1025,6 +1164,66 @@ def _summarize_dsy_region3_gap4_slot(
         le_0x0100_count=sum(1 for value in values if value <= 0x0100),
         zero_count=sum(1 for value in values if value == 0),
     )
+
+
+def _summarize_dsy_region3_gap4_link_slot(
+    *,
+    slot_index: int,
+    chunks: list[_DsyRegion3Gap4Chunk],
+    region1_record_count: int,
+    prefix_word_count: int,
+    prefix_byte_length: int,
+    first_run: DsyRegion3SentinelRun,
+) -> DsyRegion3Gap4LinkSlotSummary:
+    values = [chunk.values[slot_index] for chunk in chunks]
+    adjacent_deltas = [later - earlier for earlier, later in zip(values, values[1:])]
+    return DsyRegion3Gap4LinkSlotSummary(
+        slot_index=slot_index,
+        value_count=len(values),
+        region1_record_index_range_count=sum(
+            1 for value in values if 1 <= value <= region1_record_count
+        ),
+        prefix_word_index_range_count=sum(
+            1 for value in values if 0 <= value < prefix_word_count
+        ),
+        prefix_byte_offset_range_count=sum(
+            1 for value in values if 0 <= value < prefix_byte_length
+        ),
+        first_run_word_index_range_count=sum(
+            1
+            for value in values
+            if first_run.start_word_index <= value <= first_run.end_word_index
+        ),
+        equals_anchor_word_index_count=sum(
+            1
+            for chunk in chunks
+            if chunk.values[slot_index] == chunk.anchor_word_index
+        ),
+        equals_next_word_index_count=sum(
+            1 for chunk in chunks if chunk.values[slot_index] == chunk.next_word_index
+        ),
+        times2_plus2_anchor_count=sum(
+            1
+            for chunk in chunks
+            if chunk.values[slot_index] * 2 + 2 == chunk.anchor_word_index
+        ),
+        times2_plus6_next_count=sum(
+            1
+            for chunk in chunks
+            if chunk.values[slot_index] * 2 + 6 == chunk.next_word_index
+        ),
+        adjacent_increase_count=sum(1 for delta in adjacent_deltas if delta > 0),
+        adjacent_non_decrease_count=sum(1 for delta in adjacent_deltas if delta >= 0),
+        adjacent_decrease_count=sum(1 for delta in adjacent_deltas if delta < 0),
+        adjacent_delta_counts=_string_key_counts(adjacent_deltas),
+    )
+
+
+def _string_key_counts(values: Iterable[int]) -> dict[str, int]:
+    return {
+        str(value): count
+        for value, count in sorted(Counter(values).items(), key=lambda item: item[0])
+    }
 
 
 def _u16_words(data: bytes) -> list[int]:

@@ -126,6 +126,10 @@ The `dsy-region3-gap4` command summarizes the dominant gap-4 chunks inside the f
 It reports slot-level aggregate statistics for the three non-sentinel words between adjacent
 descending sentinels, without emitting the word triples.
 
+The `dsy-region3-gap4-links` command compares those slot values against known DSY structures and
+simple index transforms. In current corpus data, the `value * 2 + 2` transform usually matches the
+anchor sentinel word index for slot 1; slot 0 often matches but has more range-like variation.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20
