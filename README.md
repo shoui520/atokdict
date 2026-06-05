@@ -30,6 +30,7 @@ python -m atokdict dsy-region1-index /path/to/FILE.DSY --limit 20
 python -m atokdict dsy-region1-records /path/to/FILE.DSY --limit 20
 python -m atokdict dsy-region3-prefix /path/to/FILE.DSY
 python -m atokdict dsy-region3-sentinels /path/to/FILE.DSY --limit 20
+python -m atokdict dsy-region3-first-run /path/to/FILE.DSY
 python -m atokdict inventory /path/to/dicts --json
 python -m atokdict setup /path/to/SETUP.INI
 python -m atokdict companion-header /path/to/FILE.DRW

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
@@ -350,6 +351,52 @@ class DsyRegion3SentinelSummary:
         }
 
 
+@dataclass(frozen=True)
+class DsyRegion3FirstRunSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    start_word_index: int
+    end_word_index: int
+    start_byte_offset: int
+    end_byte_offset: int
+    start_value: str
+    end_value: str
+    sentinel_word_count: int
+    span_word_count: int
+    filler_word_count: int
+    gap_counts: dict[str, int]
+    filler_min_value: int | None
+    filler_max_value: int | None
+    filler_unique_value_count: int
+    filler_even_value_count: int
+    filler_le_0x0100_count: int
+    filler_zero_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "start_word_index": self.start_word_index,
+            "end_word_index": self.end_word_index,
+            "start_byte_offset": self.start_byte_offset,
+            "end_byte_offset": self.end_byte_offset,
+            "start_value": self.start_value,
+            "end_value": self.end_value,
+            "sentinel_word_count": self.sentinel_word_count,
+            "span_word_count": self.span_word_count,
+            "filler_word_count": self.filler_word_count,
+            "gap_counts": self.gap_counts,
+            "filler_min_value": self.filler_min_value,
+            "filler_max_value": self.filler_max_value,
+            "filler_unique_value_count": self.filler_unique_value_count,
+            "filler_even_value_count": self.filler_even_value_count,
+            "filler_le_0x0100_count": self.filler_le_0x0100_count,
+            "filler_zero_count": self.filler_zero_count,
+        }
+
+
 def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
     path = Path(path_or_file)
     header = parse_header(path)
@@ -650,6 +697,66 @@ def summarize_dsy_region3_sentinels(
         ),
         longest_descending_run_value_count=longest_run_length,
         descending_runs=runs,
+    )
+
+
+def summarize_dsy_region3_first_run(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3FirstRunSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    high_words = [
+        (word_index, value)
+        for word_index, value in enumerate(words)
+        if value >= high_word_minimum
+    ]
+    runs = _descending_high_word_runs(high_words)
+    if not runs:
+        raise ValueError("DSY region 3 prefix has no high-word sentinel runs")
+
+    first_run = runs[0]
+    sentinel_positions = [
+        word_index
+        for word_index in range(first_run.start_word_index, first_run.end_word_index + 1)
+        if words[word_index] >= high_word_minimum
+    ]
+    gaps = [
+        later - earlier
+        for earlier, later in zip(sentinel_positions, sentinel_positions[1:])
+    ]
+    filler_values = [
+        words[word_index]
+        for word_index in range(first_run.start_word_index, first_run.end_word_index + 1)
+        if words[word_index] < high_word_minimum
+    ]
+    gap_counts = {
+        str(gap): count
+        for gap, count in sorted(Counter(gaps).items(), key=lambda item: item[0])
+    }
+    return DsyRegion3FirstRunSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        start_word_index=first_run.start_word_index,
+        end_word_index=first_run.end_word_index,
+        start_byte_offset=first_run.start_byte_offset,
+        end_byte_offset=first_run.end_byte_offset,
+        start_value=f"0x{first_run.start_value:04x}",
+        end_value=f"0x{first_run.end_value:04x}",
+        sentinel_word_count=first_run.value_count,
+        span_word_count=first_run.end_word_index - first_run.start_word_index + 1,
+        filler_word_count=len(filler_values),
+        gap_counts=gap_counts,
+        filler_min_value=min(filler_values) if filler_values else None,
+        filler_max_value=max(filler_values) if filler_values else None,
+        filler_unique_value_count=len(set(filler_values)),
+        filler_even_value_count=sum(1 for value in filler_values if value % 2 == 0),
+        filler_le_0x0100_count=sum(1 for value in filler_values if value <= 0x0100),
+        filler_zero_count=sum(1 for value in filler_values if value == 0),
     )
 
 

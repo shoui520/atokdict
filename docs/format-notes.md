@@ -118,6 +118,10 @@ High `0xffxx` words in the region-3 prefix form descending sentinel runs. The
 bytes. Full DSY files have a large first descending run starting at word index 8; the small
 `THESAURUS.DSY` stub has only a single high word in the prefix.
 
+The `dsy-region3-first-run` command reports aggregate shape for that first run: word span, gap
+histogram, sentinel count, and non-sentinel filler-word statistics. It does not dump the local
+word sequence.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20

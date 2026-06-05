@@ -4,6 +4,7 @@ from pathlib import Path
 
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
+from atokdict.dsy import summarize_dsy_region3_first_run
 from atokdict.dsy import summarize_dsy_region3_prefix
 from atokdict.dsy import summarize_dsy_region3_sentinels
 
@@ -259,6 +260,59 @@ def test_summarize_synthetic_dsy_region3_sentinels(tmp_path: Path) -> None:
     assert [run.start_word_index for run in runs] == [2, 5, 7]
     assert runs[1].start_value == 0xFFFC
     assert runs[1].end_value == 0xFFFB
+
+
+def test_summarize_synthetic_dsy_region3_first_run(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=1)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    data[0x560:0x568] = (8).to_bytes(4, "big") + (0).to_bytes(4, "big")
+
+    prefix_words = [
+        28,
+        1,
+        0xFFFF,
+        2,
+        0xFFFE,
+        4,
+        6,
+        0xFFFD,
+        0xFFF0,
+        8,
+        0,
+        0,
+        0,
+        0,
+    ]
+    data[0x5C0:0x5DC] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_first_run(path)
+
+    assert summary.prefix_byte_length == 28
+    assert summary.start_word_index == 2
+    assert summary.end_word_index == 7
+    assert summary.start_byte_offset == 4
+    assert summary.end_byte_offset == 14
+    assert summary.start_value == "0xffff"
+    assert summary.end_value == "0xfffd"
+    assert summary.sentinel_word_count == 3
+    assert summary.span_word_count == 6
+    assert summary.filler_word_count == 3
+    assert summary.gap_counts == {"2": 1, "3": 1}
+    assert summary.filler_min_value == 2
+    assert summary.filler_max_value == 6
+    assert summary.filler_unique_value_count == 3
+    assert summary.filler_even_value_count == 3
+    assert summary.filler_le_0x0100_count == 3
+    assert summary.filler_zero_count == 0
 
 
 def _write_region(data: bytearray, descriptor_offset: int, offset: int, length: int) -> None:
