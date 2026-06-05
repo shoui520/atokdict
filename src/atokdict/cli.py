@@ -20,6 +20,7 @@ from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index, summarize_dsy_r
 from atokdict.dsy import summarize_dsy_region1_records
 from atokdict.dsy import summarize_dsy_region3_first_run
 from atokdict.dsy import summarize_dsy_region3_first_run_links
+from atokdict.dsy import summarize_dsy_region3_first_run_outliers
 from atokdict.dsy import summarize_dsy_region3_gap4
 from atokdict.dsy import summarize_dsy_region3_gap4_links
 from atokdict.dsy import summarize_dsy_region3_prefix
@@ -153,6 +154,12 @@ def main(argv: list[str] | None = None) -> int:
         help="summarize anchor-transform matches in the first region-3 sentinel run",
     )
     dsy_region3_first_run_links_parser.add_argument("path", type=Path)
+
+    dsy_region3_first_run_outliers_parser = subparsers.add_parser(
+        "dsy-region3-first-run-outliers",
+        help="summarize first-run anchor-transform outliers",
+    )
+    dsy_region3_first_run_outliers_parser.add_argument("path", type=Path)
 
     dsy_region3_gap4_parser = subparsers.add_parser(
         "dsy-region3-gap4",
@@ -321,6 +328,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "dsy-region3-first-run-links":
         first_run_links = summarize_dsy_region3_first_run_links(args.path)
         print(json.dumps(first_run_links.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-region3-first-run-outliers":
+        outliers = summarize_dsy_region3_first_run_outliers(args.path)
+        print(json.dumps(outliers.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "dsy-region3-gap4":

@@ -462,6 +462,122 @@ class DsyRegion3FirstRunLinkSummary:
 
 
 @dataclass(frozen=True)
+class DsyRegion3FirstRunNoMatchGapSummary:
+    gap_word_count: int
+    interval_count: int
+    interval_ordinal_min: int | None
+    interval_ordinal_max: int | None
+    anchor_word_index_min: int | None
+    anchor_word_index_max: int | None
+    filler_word_count: int
+    filler_min_value: int | None
+    filler_max_value: int | None
+    filler_unique_value_count: int
+    filler_even_value_count: int
+    filler_le_0x0100_count: int
+    filler_zero_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "gap_word_count": self.gap_word_count,
+            "interval_count": self.interval_count,
+            "interval_ordinal_min": self.interval_ordinal_min,
+            "interval_ordinal_max": self.interval_ordinal_max,
+            "anchor_word_index_min": self.anchor_word_index_min,
+            "anchor_word_index_max": self.anchor_word_index_max,
+            "filler_word_count": self.filler_word_count,
+            "filler_min_value": self.filler_min_value,
+            "filler_max_value": self.filler_max_value,
+            "filler_unique_value_count": self.filler_unique_value_count,
+            "filler_even_value_count": self.filler_even_value_count,
+            "filler_le_0x0100_count": self.filler_le_0x0100_count,
+            "filler_zero_count": self.filler_zero_count,
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3FirstRunSecondaryMatchGapSummary:
+    gap_word_count: int
+    interval_count: int
+    interval_ordinal_min: int | None
+    interval_ordinal_max: int | None
+    anchor_word_index_min: int | None
+    anchor_word_index_max: int | None
+    non_first_match_filler_count: int
+    late_after_second_match_filler_count: int
+    non_first_match_position_counts: dict[str, int]
+    late_after_second_match_position_counts: dict[str, int]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "gap_word_count": self.gap_word_count,
+            "interval_count": self.interval_count,
+            "interval_ordinal_min": self.interval_ordinal_min,
+            "interval_ordinal_max": self.interval_ordinal_max,
+            "anchor_word_index_min": self.anchor_word_index_min,
+            "anchor_word_index_max": self.anchor_word_index_max,
+            "non_first_match_filler_count": self.non_first_match_filler_count,
+            "late_after_second_match_filler_count": (
+                self.late_after_second_match_filler_count
+            ),
+            "non_first_match_position_counts": self.non_first_match_position_counts,
+            "late_after_second_match_position_counts": (
+                self.late_after_second_match_position_counts
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3FirstRunOutlierSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    first_run_start_word_index: int
+    first_run_end_word_index: int
+    first_run_sentinel_word_count: int
+    interval_count: int
+    no_anchor_match_interval_count: int
+    non_first_anchor_match_interval_count: int
+    non_first_anchor_match_filler_count: int
+    late_after_second_anchor_match_interval_count: int
+    late_after_second_anchor_match_filler_count: int
+    no_anchor_match_gap_summaries: list[DsyRegion3FirstRunNoMatchGapSummary]
+    non_first_anchor_match_gap_summaries: list[
+        DsyRegion3FirstRunSecondaryMatchGapSummary
+    ]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "first_run_start_word_index": self.first_run_start_word_index,
+            "first_run_end_word_index": self.first_run_end_word_index,
+            "first_run_sentinel_word_count": self.first_run_sentinel_word_count,
+            "interval_count": self.interval_count,
+            "no_anchor_match_interval_count": self.no_anchor_match_interval_count,
+            "non_first_anchor_match_interval_count": (
+                self.non_first_anchor_match_interval_count
+            ),
+            "non_first_anchor_match_filler_count": (
+                self.non_first_anchor_match_filler_count
+            ),
+            "late_after_second_anchor_match_interval_count": (
+                self.late_after_second_anchor_match_interval_count
+            ),
+            "late_after_second_anchor_match_filler_count": (
+                self.late_after_second_anchor_match_filler_count
+            ),
+            "no_anchor_match_gap_summaries": [
+                gap.to_dict() for gap in self.no_anchor_match_gap_summaries
+            ],
+            "non_first_anchor_match_gap_summaries": [
+                gap.to_dict() for gap in self.non_first_anchor_match_gap_summaries
+            ],
+        }
+
+
+@dataclass(frozen=True)
 class DsyRegion3Gap4SlotSummary:
     slot_index: int
     value_count: int
@@ -1038,6 +1154,71 @@ def summarize_dsy_region3_first_run_links(
     )
 
 
+def summarize_dsy_region3_first_run_outliers(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3FirstRunOutlierSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    first_run = _first_dsy_region3_sentinel_run(words, high_word_minimum)
+    intervals = _dsy_region3_first_run_intervals(
+        words,
+        first_run,
+        high_word_minimum,
+    )
+    no_match_by_gap: dict[int, list[_DsyRegion3FirstRunInterval]] = {}
+    non_first_by_gap: dict[int, list[tuple[_DsyRegion3FirstRunInterval, list[int]]]] = {}
+    for interval in intervals:
+        positions = _dsy_region3_anchor_match_positions(interval)
+        if not positions:
+            no_match_by_gap.setdefault(interval.gap_word_count, []).append(interval)
+        non_first_positions = [position for position in positions if position > 1]
+        if non_first_positions:
+            non_first_by_gap.setdefault(interval.gap_word_count, []).append(
+                (interval, non_first_positions)
+            )
+
+    non_first_pairs = [
+        pair for pairs in non_first_by_gap.values() for pair in pairs
+    ]
+    late_pairs = [
+        (interval, [position for position in positions if position > 2])
+        for interval, positions in non_first_pairs
+        if any(position > 2 for position in positions)
+    ]
+    return DsyRegion3FirstRunOutlierSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        first_run_start_word_index=first_run.start_word_index,
+        first_run_end_word_index=first_run.end_word_index,
+        first_run_sentinel_word_count=first_run.value_count,
+        interval_count=len(intervals),
+        no_anchor_match_interval_count=sum(
+            len(intervals_for_gap) for intervals_for_gap in no_match_by_gap.values()
+        ),
+        non_first_anchor_match_interval_count=len(non_first_pairs),
+        non_first_anchor_match_filler_count=sum(
+            len(positions) for _, positions in non_first_pairs
+        ),
+        late_after_second_anchor_match_interval_count=len(late_pairs),
+        late_after_second_anchor_match_filler_count=sum(
+            len(positions) for _, positions in late_pairs
+        ),
+        no_anchor_match_gap_summaries=[
+            _summarize_dsy_region3_no_match_gap(gap, intervals_for_gap)
+            for gap, intervals_for_gap in sorted(no_match_by_gap.items())
+        ],
+        non_first_anchor_match_gap_summaries=[
+            _summarize_dsy_region3_secondary_match_gap(gap, pairs)
+            for gap, pairs in sorted(non_first_by_gap.items())
+        ],
+    )
+
+
 def summarize_dsy_region3_gap4(
     path_or_file: str | Path,
     *,
@@ -1302,6 +1483,55 @@ def _dsy_region3_anchor_match_positions(
         for relative_position, value in enumerate(interval.filler_values, start=1)
         if value * 2 + 2 == interval.anchor_word_index
     ]
+
+
+def _summarize_dsy_region3_no_match_gap(
+    gap_word_count: int,
+    intervals: list[_DsyRegion3FirstRunInterval],
+) -> DsyRegion3FirstRunNoMatchGapSummary:
+    ordinals = [interval.ordinal for interval in intervals]
+    anchor_word_indexes = [interval.anchor_word_index for interval in intervals]
+    filler_values = [value for interval in intervals for value in interval.filler_values]
+    return DsyRegion3FirstRunNoMatchGapSummary(
+        gap_word_count=gap_word_count,
+        interval_count=len(intervals),
+        interval_ordinal_min=min(ordinals) if ordinals else None,
+        interval_ordinal_max=max(ordinals) if ordinals else None,
+        anchor_word_index_min=min(anchor_word_indexes) if anchor_word_indexes else None,
+        anchor_word_index_max=max(anchor_word_indexes) if anchor_word_indexes else None,
+        filler_word_count=len(filler_values),
+        filler_min_value=min(filler_values) if filler_values else None,
+        filler_max_value=max(filler_values) if filler_values else None,
+        filler_unique_value_count=len(set(filler_values)),
+        filler_even_value_count=sum(1 for value in filler_values if value % 2 == 0),
+        filler_le_0x0100_count=sum(1 for value in filler_values if value <= 0x0100),
+        filler_zero_count=sum(1 for value in filler_values if value == 0),
+    )
+
+
+def _summarize_dsy_region3_secondary_match_gap(
+    gap_word_count: int,
+    pairs: list[tuple[_DsyRegion3FirstRunInterval, list[int]]],
+) -> DsyRegion3FirstRunSecondaryMatchGapSummary:
+    intervals = [interval for interval, _ in pairs]
+    ordinals = [interval.ordinal for interval in intervals]
+    anchor_word_indexes = [interval.anchor_word_index for interval in intervals]
+    non_first_positions = [position for _, positions in pairs for position in positions]
+    late_positions = [
+        position for position in non_first_positions if position > 2
+    ]
+    return DsyRegion3FirstRunSecondaryMatchGapSummary(
+        gap_word_count=gap_word_count,
+        interval_count=len(intervals),
+        interval_ordinal_min=min(ordinals) if ordinals else None,
+        interval_ordinal_max=max(ordinals) if ordinals else None,
+        anchor_word_index_min=min(anchor_word_indexes) if anchor_word_indexes else None,
+        anchor_word_index_max=max(anchor_word_indexes) if anchor_word_indexes else None,
+        non_first_match_filler_count=len(non_first_positions),
+        late_after_second_match_filler_count=len(late_positions),
+        non_first_match_position_counts=_string_key_counts(non_first_positions),
+        late_after_second_match_position_counts=_string_key_counts(late_positions),
+    )
 
 
 def _dsy_region3_gap4_chunks(

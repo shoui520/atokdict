@@ -126,6 +126,10 @@ The `dsy-region3-first-run-links` command checks all adjacent sentinel intervals
 for the `value * 2 + 2 == anchor word index` transform. In current corpus data, non-gap-4
 intervals usually carry that target at the first filler position.
 
+The `dsy-region3-first-run-outliers` command groups intervals with no anchor-transform match and
+intervals with non-first-position matches. It reports only gap-level ordinal ranges, anchor ranges,
+broad filler-value statistics, and relative-position histograms.
+
 The `dsy-region3-gap4` command summarizes the dominant gap-4 chunks inside the first sentinel run.
 It reports slot-level aggregate statistics for the three non-sentinel words between adjacent
 descending sentinels, without emitting the word triples.

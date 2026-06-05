@@ -6,6 +6,7 @@ from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
 from atokdict.dsy import summarize_dsy_region3_first_run
 from atokdict.dsy import summarize_dsy_region3_first_run_links
+from atokdict.dsy import summarize_dsy_region3_first_run_outliers
 from atokdict.dsy import summarize_dsy_region3_gap4
 from atokdict.dsy import summarize_dsy_region3_gap4_links
 from atokdict.dsy import summarize_dsy_region3_prefix
@@ -384,6 +385,77 @@ def test_summarize_synthetic_dsy_region3_first_run_links(tmp_path: Path) -> None
     assert gap6.first_filler_anchor_match_count == 1
     assert gap6.second_filler_anchor_match_count == 0
     assert gap6.anchor_match_position_counts == {"1": 1, "3": 1}
+
+
+def test_summarize_synthetic_dsy_region3_first_run_outliers(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=1)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    data[0x560:0x568] = (8).to_bytes(4, "big") + (0).to_bytes(4, "big")
+
+    prefix_words = [
+        44,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xFFFF,
+        2,
+        0xFFFE,
+        4,
+        4,
+        99,
+        0xFFFD,
+        6,
+        55,
+        6,
+        77,
+        88,
+        0xFFFC,
+        0,
+    ]
+    data[0x5C0:0x5EC] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_first_run_outliers(path)
+
+    assert summary.first_run_start_word_index == 8
+    assert summary.first_run_end_word_index == 20
+    assert summary.first_run_sentinel_word_count == 4
+    assert summary.interval_count == 3
+    assert summary.no_anchor_match_interval_count == 1
+    assert summary.non_first_anchor_match_interval_count == 2
+    assert summary.non_first_anchor_match_filler_count == 2
+    assert summary.late_after_second_anchor_match_interval_count == 1
+    assert summary.late_after_second_anchor_match_filler_count == 1
+    no_match = summary.no_anchor_match_gap_summaries[0]
+    assert no_match.gap_word_count == 2
+    assert no_match.interval_ordinal_min == 0
+    assert no_match.interval_ordinal_max == 0
+    assert no_match.anchor_word_index_min == 8
+    assert no_match.anchor_word_index_max == 8
+    assert no_match.filler_word_count == 1
+    assert no_match.filler_min_value == 2
+    assert no_match.filler_max_value == 2
+    assert no_match.filler_le_0x0100_count == 1
+    secondary_gap4, secondary_gap6 = summary.non_first_anchor_match_gap_summaries
+    assert secondary_gap4.gap_word_count == 4
+    assert secondary_gap4.interval_count == 1
+    assert secondary_gap4.non_first_match_position_counts == {"2": 1}
+    assert secondary_gap4.late_after_second_match_position_counts == {}
+    assert secondary_gap6.gap_word_count == 6
+    assert secondary_gap6.non_first_match_position_counts == {"3": 1}
+    assert secondary_gap6.late_after_second_match_position_counts == {"3": 1}
 
 
 def test_summarize_synthetic_dsy_region3_gap4(tmp_path: Path) -> None:
