@@ -138,6 +138,9 @@ The `dsy-region3-extra-runs` command summarizes later runs whose run indexes are
 first-run interval ordinal range. In current corpus data, those extra later runs appear as a
 contiguous suffix in `KEIGO_OJITEN` and `KADOKAWA_RUIGO`.
 
+The `dsy-region3-extra-run-links` command checks whether extra run indexes and extra run value
+ordinals recur as low words in region-3 prefix zones and fit in the region-1 record-index range.
+
 The `dsy-region3-gap4` command summarizes the dominant gap-4 chunks inside the first sentinel run.
 It reports slot-level aggregate statistics for the three non-sentinel words between adjacent
 descending sentinels, without emitting the word triples.

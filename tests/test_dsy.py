@@ -4,6 +4,7 @@ from pathlib import Path
 
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
+from atokdict.dsy import summarize_dsy_region3_extra_run_links
 from atokdict.dsy import summarize_dsy_region3_extra_runs
 from atokdict.dsy import summarize_dsy_region3_first_run
 from atokdict.dsy import summarize_dsy_region3_first_run_links
@@ -621,6 +622,97 @@ def test_summarize_synthetic_dsy_region3_extra_runs(tmp_path: Path) -> None:
     assert summary.extra_run_end_word_index_max == 32
     assert summary.extra_run_value_ordinal_min == 47
     assert summary.extra_run_value_ordinal_max == 47
+
+
+def test_summarize_synthetic_dsy_region3_extra_run_links(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=5)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    region1_records = [
+        (40, 0),
+        (1, 1),
+        (2, 3),
+        (3, 6),
+        (4, 10),
+    ]
+    data[0x560:0x588] = b"".join(
+        first.to_bytes(4, "big") + second.to_bytes(4, "big")
+        for first, second in region1_records
+    )
+
+    prefix_words = [
+        72,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xFFFF,
+        3,
+        0xFFFE,
+        4,
+        47,
+        99,
+        0xFFFD,
+        6,
+        55,
+        6,
+        77,
+        88,
+        0xFFFC,
+        0,
+        0xFFF0,
+        3,
+        0xFFEF,
+        47,
+        0xFFE0,
+        0,
+        0xFFDF,
+        0,
+        0xFFDE,
+        0,
+        0xFFD0,
+        0,
+        0,
+        0,
+    ]
+    data[0x5C0:0x608] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_extra_run_links(path)
+
+    assert summary.region1_record_count == 4
+    assert summary.extra_later_run_count == 1
+    assert summary.extra_run_index_count == 1
+    assert summary.extra_run_index_min == 3
+    assert summary.extra_run_index_max == 3
+    assert summary.extra_value_ordinal_count == 1
+    assert summary.extra_value_ordinal_min == 47
+    assert summary.extra_value_ordinal_max == 47
+    assert summary.extra_run_indexes_in_region1_record_range_count == 1
+    assert summary.extra_value_ordinals_in_region1_record_range_count == 0
+    assert summary.region1_extra_index_record_length_min == 3
+    assert summary.region1_extra_index_record_length_max == 3
+    assert summary.region1_extra_index_record_length_unique_count == 1
+    assert summary.region1_extra_ordinal_record_length_min is None
+    zones = {zone.zone_name: zone for zone in summary.zone_summaries}
+    assert zones["all"].extra_run_index_match_word_count == 2
+    assert zones["all"].extra_run_index_unique_match_count == 1
+    assert zones["all"].extra_value_ordinal_match_word_count == 2
+    assert zones["all"].extra_value_ordinal_unique_match_count == 1
+    assert zones["first_run_span"].extra_run_index_match_word_count == 1
+    assert zones["first_run_span"].extra_value_ordinal_match_word_count == 1
+    assert zones["post_first_run"].extra_run_index_match_word_count == 1
+    assert zones["post_first_run"].extra_value_ordinal_match_word_count == 1
 
 
 def test_summarize_synthetic_dsy_region3_gap4(tmp_path: Path) -> None:

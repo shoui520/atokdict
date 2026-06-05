@@ -728,6 +728,98 @@ class DsyRegion3ExtraRunSummary:
 
 
 @dataclass(frozen=True)
+class DsyRegion3ExtraRunLinkZoneSummary:
+    zone_name: str
+    low_word_count: int
+    extra_run_index_match_word_count: int
+    extra_run_index_unique_match_count: int
+    extra_value_ordinal_match_word_count: int
+    extra_value_ordinal_unique_match_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "zone_name": self.zone_name,
+            "low_word_count": self.low_word_count,
+            "extra_run_index_match_word_count": (
+                self.extra_run_index_match_word_count
+            ),
+            "extra_run_index_unique_match_count": (
+                self.extra_run_index_unique_match_count
+            ),
+            "extra_value_ordinal_match_word_count": (
+                self.extra_value_ordinal_match_word_count
+            ),
+            "extra_value_ordinal_unique_match_count": (
+                self.extra_value_ordinal_unique_match_count
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3ExtraRunLinkSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    region1_record_count: int
+    extra_later_run_count: int
+    extra_run_index_count: int
+    extra_run_index_min: int | None
+    extra_run_index_max: int | None
+    extra_value_ordinal_count: int
+    extra_value_ordinal_min: int | None
+    extra_value_ordinal_max: int | None
+    extra_run_indexes_in_region1_record_range_count: int
+    extra_value_ordinals_in_region1_record_range_count: int
+    region1_extra_index_record_length_min: int | None
+    region1_extra_index_record_length_max: int | None
+    region1_extra_index_record_length_unique_count: int
+    region1_extra_ordinal_record_length_min: int | None
+    region1_extra_ordinal_record_length_max: int | None
+    region1_extra_ordinal_record_length_unique_count: int
+    zone_summaries: list[DsyRegion3ExtraRunLinkZoneSummary]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "region1_record_count": self.region1_record_count,
+            "extra_later_run_count": self.extra_later_run_count,
+            "extra_run_index_count": self.extra_run_index_count,
+            "extra_run_index_min": self.extra_run_index_min,
+            "extra_run_index_max": self.extra_run_index_max,
+            "extra_value_ordinal_count": self.extra_value_ordinal_count,
+            "extra_value_ordinal_min": self.extra_value_ordinal_min,
+            "extra_value_ordinal_max": self.extra_value_ordinal_max,
+            "extra_run_indexes_in_region1_record_range_count": (
+                self.extra_run_indexes_in_region1_record_range_count
+            ),
+            "extra_value_ordinals_in_region1_record_range_count": (
+                self.extra_value_ordinals_in_region1_record_range_count
+            ),
+            "region1_extra_index_record_length_min": (
+                self.region1_extra_index_record_length_min
+            ),
+            "region1_extra_index_record_length_max": (
+                self.region1_extra_index_record_length_max
+            ),
+            "region1_extra_index_record_length_unique_count": (
+                self.region1_extra_index_record_length_unique_count
+            ),
+            "region1_extra_ordinal_record_length_min": (
+                self.region1_extra_ordinal_record_length_min
+            ),
+            "region1_extra_ordinal_record_length_max": (
+                self.region1_extra_ordinal_record_length_max
+            ),
+            "region1_extra_ordinal_record_length_unique_count": (
+                self.region1_extra_ordinal_record_length_unique_count
+            ),
+            "zone_summaries": [zone.to_dict() for zone in self.zone_summaries],
+        }
+
+
+@dataclass(frozen=True)
 class DsyRegion3Gap4SlotSummary:
     slot_index: int
     value_count: int
@@ -1468,6 +1560,106 @@ def summarize_dsy_region3_extra_runs(
     )
 
 
+def summarize_dsy_region3_extra_run_links(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3ExtraRunLinkSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    region1_index = parse_dsy_region1_index(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    high_words = [
+        (word_index, value)
+        for word_index, value in enumerate(words)
+        if value >= high_word_minimum
+    ]
+    runs = _descending_high_word_runs(high_words)
+    if not runs:
+        raise ValueError("DSY region 3 prefix has no high-word sentinel runs")
+
+    first_run = runs[0]
+    intervals = _dsy_region3_first_run_intervals(
+        words,
+        first_run,
+        high_word_minimum,
+    )
+    interval_ordinals = {interval.ordinal for interval in intervals}
+    extra_runs = [run for run in runs[1:] if run.run_index not in interval_ordinals]
+    extra_run_indexes = {run.run_index for run in extra_runs}
+    extra_value_ordinals = _dsy_region3_run_value_ordinals(extra_runs)
+    prefix_zones = {
+        "all": range(len(words)),
+        "first_run_span": range(
+            first_run.start_word_index,
+            first_run.end_word_index + 1,
+        ),
+        "post_first_run": range(first_run.end_word_index + 1, len(words)),
+    }
+    index_record_lengths = [
+        region1_index.entries[value - 1].byte_length
+        for value in sorted(extra_run_indexes)
+        if 1 <= value <= len(region1_index.entries)
+    ]
+    ordinal_record_lengths = [
+        region1_index.entries[value - 1].byte_length
+        for value in sorted(extra_value_ordinals)
+        if 1 <= value <= len(region1_index.entries)
+    ]
+    return DsyRegion3ExtraRunLinkSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        region1_record_count=len(region1_index.entries),
+        extra_later_run_count=len(extra_runs),
+        extra_run_index_count=len(extra_run_indexes),
+        extra_run_index_min=min(extra_run_indexes) if extra_run_indexes else None,
+        extra_run_index_max=max(extra_run_indexes) if extra_run_indexes else None,
+        extra_value_ordinal_count=len(extra_value_ordinals),
+        extra_value_ordinal_min=(
+            min(extra_value_ordinals) if extra_value_ordinals else None
+        ),
+        extra_value_ordinal_max=(
+            max(extra_value_ordinals) if extra_value_ordinals else None
+        ),
+        extra_run_indexes_in_region1_record_range_count=sum(
+            1 for value in extra_run_indexes if 1 <= value <= len(region1_index.entries)
+        ),
+        extra_value_ordinals_in_region1_record_range_count=sum(
+            1
+            for value in extra_value_ordinals
+            if 1 <= value <= len(region1_index.entries)
+        ),
+        region1_extra_index_record_length_min=(
+            min(index_record_lengths) if index_record_lengths else None
+        ),
+        region1_extra_index_record_length_max=(
+            max(index_record_lengths) if index_record_lengths else None
+        ),
+        region1_extra_index_record_length_unique_count=len(set(index_record_lengths)),
+        region1_extra_ordinal_record_length_min=(
+            min(ordinal_record_lengths) if ordinal_record_lengths else None
+        ),
+        region1_extra_ordinal_record_length_max=(
+            max(ordinal_record_lengths) if ordinal_record_lengths else None
+        ),
+        region1_extra_ordinal_record_length_unique_count=len(
+            set(ordinal_record_lengths)
+        ),
+        zone_summaries=[
+            _summarize_dsy_region3_extra_run_link_zone(
+                zone_name=zone_name,
+                words=[words[index] for index in zone_range],
+                high_word_minimum=high_word_minimum,
+                extra_run_indexes=extra_run_indexes,
+                extra_value_ordinals=extra_value_ordinals,
+            )
+            for zone_name, zone_range in prefix_zones.items()
+        ],
+    )
+
+
 def summarize_dsy_region3_gap4(
     path_or_file: str | Path,
     *,
@@ -1920,6 +2112,36 @@ def _summarize_dsy_region3_extra_runs(
         extra_run_value_ordinal_max=(
             max(extra_run_value_ordinals) if extra_run_value_ordinals else None
         ),
+    )
+
+
+def _dsy_region3_run_value_ordinals(
+    runs: list[DsyRegion3SentinelRun],
+) -> set[int]:
+    ordinals: set[int] = set()
+    for run in runs:
+        ordinals.update(range(0xFFFF - run.start_value, 0xFFFF - run.end_value + 1))
+    return ordinals
+
+
+def _summarize_dsy_region3_extra_run_link_zone(
+    *,
+    zone_name: str,
+    words: list[int],
+    high_word_minimum: int,
+    extra_run_indexes: set[int],
+    extra_value_ordinals: set[int],
+) -> DsyRegion3ExtraRunLinkZoneSummary:
+    low_words = [word for word in words if word < high_word_minimum]
+    index_matches = [word for word in low_words if word in extra_run_indexes]
+    ordinal_matches = [word for word in low_words if word in extra_value_ordinals]
+    return DsyRegion3ExtraRunLinkZoneSummary(
+        zone_name=zone_name,
+        low_word_count=len(low_words),
+        extra_run_index_match_word_count=len(index_matches),
+        extra_run_index_unique_match_count=len(set(index_matches)),
+        extra_value_ordinal_match_word_count=len(ordinal_matches),
+        extra_value_ordinal_unique_match_count=len(set(ordinal_matches)),
     )
 
 
