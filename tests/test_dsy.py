@@ -5,6 +5,7 @@ from pathlib import Path
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
 from atokdict.dsy import summarize_dsy_region3_prefix
+from atokdict.dsy import summarize_dsy_region3_sentinels
 
 
 def test_parse_synthetic_dsy_map(tmp_path: Path) -> None:
@@ -211,6 +212,53 @@ def test_summarize_synthetic_dsy_region3_prefix(tmp_path: Path) -> None:
     assert summary.possible_absolute_offsets_by_region["region_1"] >= 1
     assert summary.possible_absolute_offsets_by_region["region_3"] >= 1
     assert summary.possible_region1_payload_relative_offsets >= 1
+
+
+def test_summarize_synthetic_dsy_region3_sentinels(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=1)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    data[0x560:0x568] = (8).to_bytes(4, "big") + (0).to_bytes(4, "big")
+
+    prefix_words = [
+        24,
+        1,
+        0xFFFF,
+        0xFFFE,
+        4,
+        0xFFFC,
+        0xFFFB,
+        0xFFF0,
+        8,
+        0,
+        0,
+        0,
+    ]
+    data[0x5C0:0x5D8] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_sentinels(path)
+
+    assert summary.prefix_byte_length == 24
+    assert summary.prefix_word_count == 12
+    assert summary.high_word_count == 5
+    assert summary.descending_run_count == 3
+    assert summary.first_descending_run_value_count == 2
+    assert summary.first_descending_run_start_value == "0xffff"
+    assert summary.first_descending_run_end_value == "0xfffe"
+    assert summary.longest_descending_run_value_count == 2
+    runs = summary.descending_runs
+    assert [run.value_count for run in runs] == [2, 2, 1]
+    assert [run.start_word_index for run in runs] == [2, 5, 7]
+    assert runs[1].start_value == 0xFFFC
+    assert runs[1].end_value == 0xFFFB
 
 
 def _write_region(data: bytearray, descriptor_offset: int, offset: int, length: int) -> None:

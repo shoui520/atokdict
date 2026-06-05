@@ -113,6 +113,11 @@ words; a bounded scan immediately after the prefix has not shown those marker wo
 `dsy-region3-prefix` command reports this split candidate with hashes, marker counts, 16-bit word
 counts, and candidate offset-reference counts.
 
+High `0xffxx` words in the region-3 prefix form descending sentinel runs. The
+`dsy-region3-sentinels` command reports those run boundaries and lengths without dumping prefix
+bytes. Full DSY files have a large first descending run starting at word index 8; the small
+`THESAURUS.DSY` stub has only a single high word in the prefix.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20

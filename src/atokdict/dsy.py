@@ -19,6 +19,7 @@ DSY_REGION1_RECORD_SCAN_BYTES = 4096
 DSY_REGION1_RECORD_HASH_BYTES = 64
 DSY_REGION3_TAIL_SCAN_BYTES = 4096
 DSY_REGION3_HASH_BYTES = 64
+DSY_REGION3_HIGH_WORD_MINIMUM = 0xFF00
 DSY_REGION_HASH_BYTES = 64
 DSY_REGION_SCAN_BYTES = 4096
 
@@ -291,6 +292,64 @@ class DsyRegion3PrefixSummary:
         }
 
 
+@dataclass(frozen=True)
+class DsyRegion3SentinelRun:
+    run_index: int
+    start_word_index: int
+    end_word_index: int
+    start_byte_offset: int
+    end_byte_offset: int
+    start_value: int
+    end_value: int
+    value_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "run_index": self.run_index,
+            "start_word_index": self.start_word_index,
+            "end_word_index": self.end_word_index,
+            "start_byte_offset": self.start_byte_offset,
+            "end_byte_offset": self.end_byte_offset,
+            "start_value": f"0x{self.start_value:04x}",
+            "end_value": f"0x{self.end_value:04x}",
+            "value_count": self.value_count,
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3SentinelSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    prefix_word_count: int
+    high_word_minimum: str
+    high_word_count: int
+    descending_run_count: int
+    first_descending_run_value_count: int
+    first_descending_run_start_value: str | None
+    first_descending_run_end_value: str | None
+    longest_descending_run_value_count: int
+    descending_runs: list[DsyRegion3SentinelRun]
+
+    def to_dict(self, *, run_limit: int | None = None) -> dict[str, object]:
+        runs = self.descending_runs if run_limit is None else self.descending_runs[:run_limit]
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "prefix_word_count": self.prefix_word_count,
+            "high_word_minimum": self.high_word_minimum,
+            "high_word_count": self.high_word_count,
+            "descending_run_count": self.descending_run_count,
+            "first_descending_run_value_count": self.first_descending_run_value_count,
+            "first_descending_run_start_value": self.first_descending_run_start_value,
+            "first_descending_run_end_value": self.first_descending_run_end_value,
+            "longest_descending_run_value_count": self.longest_descending_run_value_count,
+            "descending_runs_returned": len(runs),
+            "descending_runs": [run.to_dict() for run in runs],
+        }
+
+
 def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
     path = Path(path_or_file)
     header = parse_header(path)
@@ -515,22 +574,11 @@ def summarize_dsy_region3_prefix(
         raise ValueError("DSY region 3 prefix diagnostics require four mapped regions")
 
     region = dsy_map.regions[3]
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    prefix_byte_length = len(prefix)
+    tail_byte_length = region.byte_length - prefix_byte_length
     with path.open("rb") as handle:
-        handle.seek(region.data_offset)
-        prefix_length_bytes = handle.read(2)
-        if len(prefix_length_bytes) != 2:
-            raise ValueError("DSY region 3 is too small to contain a prefix length")
-        prefix_byte_length = int.from_bytes(prefix_length_bytes, "big")
-        if prefix_byte_length % 2:
-            raise ValueError("DSY region 3 prefix length is not 16-bit aligned")
-        if prefix_byte_length > region.byte_length:
-            raise ValueError("DSY region 3 prefix length exceeds region length")
-
-        handle.seek(region.data_offset)
-        prefix = handle.read(prefix_byte_length)
-        if len(prefix) != prefix_byte_length:
-            raise ValueError("DSY region 3 prefix is truncated")
-        tail_byte_length = region.byte_length - prefix_byte_length
+        handle.seek(region.data_offset + prefix_byte_length)
         tail_scan = handle.read(min(tail_byte_length, tail_scan_bytes))
 
     prefix_words = _u16_words(prefix)
@@ -565,6 +613,43 @@ def summarize_dsy_region3_prefix(
             prefix,
             index.covered_payload_byte_length,
         ),
+    )
+
+
+def summarize_dsy_region3_sentinels(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3SentinelSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    high_words = [
+        (word_index, value)
+        for word_index, value in enumerate(words)
+        if value >= high_word_minimum
+    ]
+    runs = _descending_high_word_runs(high_words)
+    first_run = runs[0] if runs else None
+    longest_run_length = max((run.value_count for run in runs), default=0)
+    return DsyRegion3SentinelSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        prefix_word_count=len(words),
+        high_word_minimum=f"0x{high_word_minimum:04x}",
+        high_word_count=len(high_words),
+        descending_run_count=len(runs),
+        first_descending_run_value_count=first_run.value_count if first_run else 0,
+        first_descending_run_start_value=(
+            f"0x{first_run.start_value:04x}" if first_run else None
+        ),
+        first_descending_run_end_value=(
+            f"0x{first_run.end_value:04x}" if first_run else None
+        ),
+        longest_descending_run_value_count=longest_run_length,
+        descending_runs=runs,
     )
 
 
@@ -641,6 +726,66 @@ def _marker_counts(data: bytes) -> dict[str, int]:
         if key in counts:
             counts[key] += 1
     return counts
+
+
+def _read_dsy_region3_prefix(path: Path, dsy_map: DsyMap) -> bytes:
+    if len(dsy_map.regions) < 4:
+        raise ValueError("DSY region 3 diagnostics require four mapped regions")
+    region = dsy_map.regions[3]
+    with path.open("rb") as handle:
+        handle.seek(region.data_offset)
+        prefix_length_bytes = handle.read(2)
+        if len(prefix_length_bytes) != 2:
+            raise ValueError("DSY region 3 is too small to contain a prefix length")
+        prefix_byte_length = int.from_bytes(prefix_length_bytes, "big")
+        if prefix_byte_length % 2:
+            raise ValueError("DSY region 3 prefix length is not 16-bit aligned")
+        if prefix_byte_length > region.byte_length:
+            raise ValueError("DSY region 3 prefix length exceeds region length")
+
+        handle.seek(region.data_offset)
+        prefix = handle.read(prefix_byte_length)
+        if len(prefix) != prefix_byte_length:
+            raise ValueError("DSY region 3 prefix is truncated")
+        return prefix
+
+
+def _descending_high_word_runs(
+    high_words: list[tuple[int, int]],
+) -> list[DsyRegion3SentinelRun]:
+    if not high_words:
+        return []
+
+    raw_runs: list[tuple[int, int, int, int]] = []
+    start_word_index, start_value = high_words[0]
+    end_word_index, end_value = high_words[0]
+    for word_index, value in high_words[1:]:
+        if value == end_value - 1:
+            end_word_index = word_index
+            end_value = value
+            continue
+        raw_runs.append((start_word_index, end_word_index, start_value, end_value))
+        start_word_index = word_index
+        start_value = value
+        end_word_index = word_index
+        end_value = value
+    raw_runs.append((start_word_index, end_word_index, start_value, end_value))
+
+    return [
+        DsyRegion3SentinelRun(
+            run_index=index,
+            start_word_index=start_word_index,
+            end_word_index=end_word_index,
+            start_byte_offset=start_word_index * 2,
+            end_byte_offset=end_word_index * 2,
+            start_value=start_value,
+            end_value=end_value,
+            value_count=start_value - end_value + 1,
+        )
+        for index, (start_word_index, end_word_index, start_value, end_value) in enumerate(
+            raw_runs
+        )
+    ]
 
 
 def _u16_words(data: bytes) -> list[int]:
