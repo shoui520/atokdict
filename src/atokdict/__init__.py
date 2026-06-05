@@ -49,6 +49,7 @@ from atokdict.linkage import DsyDszActiveClassLinkSummary
 from atokdict.linkage import DsyDszActiveClassOrderModel
 from atokdict.linkage import DsyDszRecordProfileLinearFit
 from atokdict.linkage import DsyDszRecordProfileMetricSummary
+from atokdict.linkage import DsyDszRecordSlotSummary
 from atokdict.linkage import DsyDszRecordProfileSummary
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
@@ -102,6 +103,7 @@ __all__ = [
     "DsyDszActiveClassOrderModel",
     "DsyDszRecordProfileLinearFit",
     "DsyDszRecordProfileMetricSummary",
+    "DsyDszRecordSlotSummary",
     "DsyDszRecordProfileSummary",
     "DrtKeywordRange",
     "DrtKeywordRangeSummary",

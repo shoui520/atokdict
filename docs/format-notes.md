@@ -350,3 +350,6 @@ model without dumping record bytes. For `SANRUI` using the `drop_last_active_cla
 record length is roughly `101 + 158.46 * DSZ word_count`, and several internal candidate-count
 metrics correlate strongly with DSZ word counts. This supports the model that each region-1 record
 stores class-local access data whose size scales with the number of DSZ word rows in that class.
+The same command also reports fixed-position slot summaries. In `SANRUI`, every compatible
+region-1 record has big-endian u32 slot 1 equal to `64`, supporting a candidate 64-byte local
+record header before the class-local body.

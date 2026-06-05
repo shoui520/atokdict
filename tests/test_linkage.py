@@ -107,16 +107,31 @@ def test_summarize_dsy_dsz_record_profile(tmp_path: Path) -> None:
     assert summary.first_active_class_id == 10
     assert summary.last_active_class_id == 30
     assert summary.region1_payload_byte_length == 600
+    assert summary.candidate_header_byte_length == 64
+    assert summary.candidate_header_length_match_count == 3
     assert summary.record_byte_length_mod_counts["4"] == {"0": 3}
     assert summary.word_count_linear_fit.x_metric_name == "dsz_word_count"
     assert summary.word_count_linear_fit.y_metric_name == "record_byte_length"
     assert summary.word_count_linear_fit.slope == 100.0
     assert summary.word_count_linear_fit.intercept == 0.0
+    assert summary.body_byte_length_linear_fit.slope == 100.0
+    assert summary.body_byte_length_linear_fit.intercept == -64.0
+
+    header_slot = summary.header_u32_slot_summaries[1]
+    assert header_slot.byte_offset == 4
+    assert header_slot.fixed_value == 64
+    assert header_slot.candidate_header_length_match_count == 3
+    assert header_slot.local_record_offset_range_count == 3
+
+    body_slot = summary.body_prefix_u16_slot_summaries[0]
+    assert body_slot.byte_offset == 64
+    assert body_slot.fixed_value == 0
+    assert body_slot.zero_count == 3
 
     metrics = {item.metric_name: item for item in summary.metric_summaries}
     assert metrics["record_byte_length"].value_sum == 600
     assert metrics["record_byte_length"].correlation_to_word_count_pearson == 1.0
-    assert metrics["u16_zero_count"].value_sum == 300
+    assert metrics["u16_zero_count"].value_sum == 297
     assert metrics["u16_zero_count"].correlation_to_word_count_pearson == 1.0
 
     incompatible = summarize_dsy_dsz_record_profile(
@@ -209,6 +224,11 @@ def _write_synthetic_dsy_region1(path: Path, *, record_lengths: list[int]) -> No
         first.to_bytes(4, "big") + second.to_bytes(4, "big")
         for first, second in records
     )
+    payload_offset = region1_offset + table_byte_length
+    for byte_length in record_lengths:
+        if byte_length >= 8:
+            data[payload_offset + 4 : payload_offset + 8] = (64).to_bytes(4, "big")
+        payload_offset += byte_length
     path.write_bytes(data)
 
 

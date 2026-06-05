@@ -19,6 +19,9 @@ DSY_DSZ_ACTIVE_CLASS_ORDER_MODELS = {
     "drop_first_active_class",
     "drop_last_active_class",
 }
+DSY_DSZ_RECORD_HEADER_BYTE_LENGTH = 64
+DSY_DSZ_RECORD_HEADER_U32_SLOT_COUNT = DSY_DSZ_RECORD_HEADER_BYTE_LENGTH // 4
+DSY_DSZ_RECORD_BODY_PREFIX_U16_SLOT_COUNT = 16
 DSY_DSZ_RECORD_PROFILE_MODULI = (4, 8, 16, 32, 64)
 
 
@@ -311,6 +314,52 @@ class DsyDszRecordProfileLinearFit:
 
 
 @dataclass(frozen=True)
+class DsyDszRecordSlotSummary:
+    slot_kind: str
+    slot_index: int
+    byte_offset: int
+    value_width_bits: int
+    observed_count: int
+    zero_count: int
+    unique_value_count: int
+    fixed_value: int | None
+    min_value: int | None
+    max_value: int | None
+    candidate_header_length_match_count: int
+    local_record_offset_range_count: int
+    region1_payload_relative_offset_range_count: int
+    correlation_to_word_count_pearson: float | None
+    correlation_to_word_count_spearman: float | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "slot_kind": self.slot_kind,
+            "slot_index": self.slot_index,
+            "byte_offset": self.byte_offset,
+            "value_width_bits": self.value_width_bits,
+            "observed_count": self.observed_count,
+            "zero_count": self.zero_count,
+            "unique_value_count": self.unique_value_count,
+            "fixed_value": self.fixed_value,
+            "min_value": self.min_value,
+            "max_value": self.max_value,
+            "candidate_header_length_match_count": (
+                self.candidate_header_length_match_count
+            ),
+            "local_record_offset_range_count": self.local_record_offset_range_count,
+            "region1_payload_relative_offset_range_count": (
+                self.region1_payload_relative_offset_range_count
+            ),
+            "correlation_to_word_count_pearson": (
+                self.correlation_to_word_count_pearson
+            ),
+            "correlation_to_word_count_spearman": (
+                self.correlation_to_word_count_spearman
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class DsyDszRecordProfileSummary:
     dsy_path: str
     dsz_path: str
@@ -322,8 +371,13 @@ class DsyDszRecordProfileSummary:
     first_active_class_id: int | None
     last_active_class_id: int | None
     region1_payload_byte_length: int
+    candidate_header_byte_length: int
+    candidate_header_length_match_count: int
     record_byte_length_mod_counts: dict[str, dict[str, int]]
     word_count_linear_fit: DsyDszRecordProfileLinearFit
+    body_byte_length_linear_fit: DsyDszRecordProfileLinearFit
+    header_u32_slot_summaries: list[DsyDszRecordSlotSummary]
+    body_prefix_u16_slot_summaries: list[DsyDszRecordSlotSummary]
     metric_summaries: list[DsyDszRecordProfileMetricSummary]
 
     def to_dict(self) -> dict[str, object]:
@@ -338,8 +392,19 @@ class DsyDszRecordProfileSummary:
             "first_active_class_id": self.first_active_class_id,
             "last_active_class_id": self.last_active_class_id,
             "region1_payload_byte_length": self.region1_payload_byte_length,
+            "candidate_header_byte_length": self.candidate_header_byte_length,
+            "candidate_header_length_match_count": (
+                self.candidate_header_length_match_count
+            ),
             "record_byte_length_mod_counts": self.record_byte_length_mod_counts,
             "word_count_linear_fit": self.word_count_linear_fit.to_dict(),
+            "body_byte_length_linear_fit": self.body_byte_length_linear_fit.to_dict(),
+            "header_u32_slot_summaries": [
+                item.to_dict() for item in self.header_u32_slot_summaries
+            ],
+            "body_prefix_u16_slot_summaries": [
+                item.to_dict() for item in self.body_prefix_u16_slot_summaries
+            ],
             "metric_summaries": [item.to_dict() for item in self.metric_summaries],
         }
 
@@ -532,8 +597,18 @@ def summarize_dsy_dsz_record_profile(
             first_active_class_id=active_class_ids[0] if active_class_ids else None,
             last_active_class_id=active_class_ids[-1] if active_class_ids else None,
             region1_payload_byte_length=dsy_index.covered_payload_byte_length,
+            candidate_header_byte_length=DSY_DSZ_RECORD_HEADER_BYTE_LENGTH,
+            candidate_header_length_match_count=0,
             record_byte_length_mod_counts={},
             word_count_linear_fit=_linear_fit([], [], "dsz_word_count", "record_byte_length"),
+            body_byte_length_linear_fit=_linear_fit(
+                [],
+                [],
+                "dsz_word_count",
+                "body_byte_length",
+            ),
+            header_u32_slot_summaries=[],
+            body_prefix_u16_slot_summaries=[],
             metric_summaries=[],
         )
 
@@ -566,6 +641,21 @@ def summarize_dsy_dsz_record_profile(
         )
         for metric_name, values in metric_values.items()
     ]
+    header_slot_summaries, body_slot_summaries = _dsy_region1_record_slot_summaries(
+        dsy,
+        dsy_index,
+        word_counts,
+    )
+    candidate_header_length_match_count = (
+        header_slot_summaries[1].candidate_header_length_match_count
+        if len(header_slot_summaries) > 1
+        else 0
+    )
+    record_lengths = metric_values["record_byte_length"]
+    body_lengths = [
+        max(0, record_length - DSY_DSZ_RECORD_HEADER_BYTE_LENGTH)
+        for record_length in record_lengths
+    ]
 
     return DsyDszRecordProfileSummary(
         dsy_path=str(dsy),
@@ -578,15 +668,25 @@ def summarize_dsy_dsz_record_profile(
         first_active_class_id=active_class_ids[0] if active_class_ids else None,
         last_active_class_id=active_class_ids[-1] if active_class_ids else None,
         region1_payload_byte_length=dsy_index.covered_payload_byte_length,
+        candidate_header_byte_length=DSY_DSZ_RECORD_HEADER_BYTE_LENGTH,
+        candidate_header_length_match_count=candidate_header_length_match_count,
         record_byte_length_mod_counts=_record_length_mod_counts(
-            metric_values["record_byte_length"]
+            record_lengths
         ),
         word_count_linear_fit=_linear_fit(
             word_counts,
-            metric_values["record_byte_length"],
+            record_lengths,
             "dsz_word_count",
             "record_byte_length",
         ),
+        body_byte_length_linear_fit=_linear_fit(
+            word_counts,
+            body_lengths,
+            "dsz_word_count",
+            "body_byte_length",
+        ),
+        header_u32_slot_summaries=header_slot_summaries,
+        body_prefix_u16_slot_summaries=body_slot_summaries,
         metric_summaries=metric_summaries,
     )
 
@@ -891,6 +991,131 @@ def _profile_dsy_region1_record(
         "u32_group_id_range_count": u32_group_id_range_count,
         "u32_word_id_range_count": u32_word_id_range_count,
     }
+
+
+def _dsy_region1_record_slot_summaries(
+    dsy_path: Path,
+    dsy_index,
+    word_counts: list[int],
+) -> tuple[list[DsyDszRecordSlotSummary], list[DsyDszRecordSlotSummary]]:
+    header_slot_values: list[list[int | None]] = [
+        [] for _index in range(DSY_DSZ_RECORD_HEADER_U32_SLOT_COUNT)
+    ]
+    body_slot_values: list[list[int | None]] = [
+        [] for _index in range(DSY_DSZ_RECORD_BODY_PREFIX_U16_SLOT_COUNT)
+    ]
+    record_lengths: list[int] = []
+
+    with dsy_path.open("rb") as handle:
+        for entry in dsy_index.entries:
+            handle.seek(entry.payload_offset)
+            prefix = handle.read(
+                DSY_DSZ_RECORD_HEADER_BYTE_LENGTH
+                + DSY_DSZ_RECORD_BODY_PREFIX_U16_SLOT_COUNT * 2
+            )
+            record_lengths.append(entry.byte_length)
+            for slot_index, values in enumerate(header_slot_values):
+                offset = slot_index * 4
+                if len(prefix) >= offset + 4:
+                    values.append(int.from_bytes(prefix[offset : offset + 4], "big"))
+                else:
+                    values.append(None)
+            for slot_index, values in enumerate(body_slot_values):
+                offset = DSY_DSZ_RECORD_HEADER_BYTE_LENGTH + slot_index * 2
+                if len(prefix) >= offset + 2:
+                    values.append(int.from_bytes(prefix[offset : offset + 2], "big"))
+                else:
+                    values.append(None)
+
+    header_summaries = [
+        _summarize_record_slot_values(
+            slot_kind="header_u32",
+            slot_index=slot_index,
+            byte_offset=slot_index * 4,
+            value_width_bits=32,
+            values=values,
+            record_lengths=record_lengths,
+            region1_payload_byte_length=dsy_index.covered_payload_byte_length,
+            word_counts=word_counts,
+        )
+        for slot_index, values in enumerate(header_slot_values)
+    ]
+    body_summaries = [
+        _summarize_record_slot_values(
+            slot_kind="body_prefix_u16",
+            slot_index=slot_index,
+            byte_offset=DSY_DSZ_RECORD_HEADER_BYTE_LENGTH + slot_index * 2,
+            value_width_bits=16,
+            values=values,
+            record_lengths=record_lengths,
+            region1_payload_byte_length=dsy_index.covered_payload_byte_length,
+            word_counts=word_counts,
+        )
+        for slot_index, values in enumerate(body_slot_values)
+    ]
+    return header_summaries, body_summaries
+
+
+def _summarize_record_slot_values(
+    *,
+    slot_kind: str,
+    slot_index: int,
+    byte_offset: int,
+    value_width_bits: int,
+    values: list[int | None],
+    record_lengths: list[int],
+    region1_payload_byte_length: int,
+    word_counts: list[int],
+) -> DsyDszRecordSlotSummary:
+    observed_pairs = [
+        (value, record_length, word_count)
+        for value, record_length, word_count in zip(
+            values,
+            record_lengths,
+            word_counts,
+            strict=True,
+        )
+        if value is not None
+    ]
+    observed_values = [value for value, _record_length, _word_count in observed_pairs]
+    observed_word_counts = [
+        word_count for _value, _record_length, word_count in observed_pairs
+    ]
+    unique_values = set(observed_values)
+    fixed_value = (
+        next(iter(unique_values)) if len(unique_values) == 1 and observed_values else None
+    )
+    return DsyDszRecordSlotSummary(
+        slot_kind=slot_kind,
+        slot_index=slot_index,
+        byte_offset=byte_offset,
+        value_width_bits=value_width_bits,
+        observed_count=len(observed_values),
+        zero_count=sum(1 for value in observed_values if value == 0),
+        unique_value_count=len(unique_values),
+        fixed_value=fixed_value,
+        min_value=min(observed_values) if observed_values else None,
+        max_value=max(observed_values) if observed_values else None,
+        candidate_header_length_match_count=sum(
+            1 for value in observed_values if value == DSY_DSZ_RECORD_HEADER_BYTE_LENGTH
+        ),
+        local_record_offset_range_count=sum(
+            1
+            for value, record_length, _word_count in observed_pairs
+            if 0 <= value < record_length
+        ),
+        region1_payload_relative_offset_range_count=sum(
+            1 for value in observed_values if 0 <= value < region1_payload_byte_length
+        ),
+        correlation_to_word_count_pearson=_pearson(
+            observed_values,
+            observed_word_counts,
+        ),
+        correlation_to_word_count_spearman=_spearman(
+            observed_values,
+            observed_word_counts,
+        ),
+    )
 
 
 def _read_count_by_class(
