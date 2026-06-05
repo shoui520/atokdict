@@ -122,6 +122,10 @@ The `dsy-region3-first-run` command reports aggregate shape for that first run: 
 histogram, sentinel count, and non-sentinel filler-word statistics. It does not dump the local
 word sequence.
 
+The `dsy-region3-first-run-links` command checks all adjacent sentinel intervals in that first run
+for the `value * 2 + 2 == anchor word index` transform. In current corpus data, non-gap-4
+intervals usually carry that target at the first filler position.
+
 The `dsy-region3-gap4` command summarizes the dominant gap-4 chunks inside the first sentinel run.
 It reports slot-level aggregate statistics for the three non-sentinel words between adjacent
 descending sentinels, without emitting the word triples.

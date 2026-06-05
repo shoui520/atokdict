@@ -398,6 +398,70 @@ class DsyRegion3FirstRunSummary:
 
 
 @dataclass(frozen=True)
+class DsyRegion3FirstRunIntervalGapSummary:
+    gap_word_count: int
+    interval_count: int
+    filler_word_count: int
+    anchor_match_interval_count: int
+    no_anchor_match_interval_count: int
+    multiple_anchor_match_interval_count: int
+    anchor_match_filler_count: int
+    first_filler_anchor_match_count: int
+    second_filler_anchor_match_count: int
+    anchor_match_position_counts: dict[str, int]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "gap_word_count": self.gap_word_count,
+            "interval_count": self.interval_count,
+            "filler_word_count": self.filler_word_count,
+            "anchor_match_interval_count": self.anchor_match_interval_count,
+            "no_anchor_match_interval_count": self.no_anchor_match_interval_count,
+            "multiple_anchor_match_interval_count": (
+                self.multiple_anchor_match_interval_count
+            ),
+            "anchor_match_filler_count": self.anchor_match_filler_count,
+            "first_filler_anchor_match_count": self.first_filler_anchor_match_count,
+            "second_filler_anchor_match_count": self.second_filler_anchor_match_count,
+            "anchor_match_position_counts": self.anchor_match_position_counts,
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3FirstRunLinkSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    first_run_start_word_index: int
+    first_run_end_word_index: int
+    first_run_sentinel_word_count: int
+    interval_count: int
+    anchor_match_interval_count: int
+    no_anchor_match_interval_count: int
+    multiple_anchor_match_interval_count: int
+    anchor_match_filler_count: int
+    gap_summaries: list[DsyRegion3FirstRunIntervalGapSummary]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "first_run_start_word_index": self.first_run_start_word_index,
+            "first_run_end_word_index": self.first_run_end_word_index,
+            "first_run_sentinel_word_count": self.first_run_sentinel_word_count,
+            "interval_count": self.interval_count,
+            "anchor_match_interval_count": self.anchor_match_interval_count,
+            "no_anchor_match_interval_count": self.no_anchor_match_interval_count,
+            "multiple_anchor_match_interval_count": (
+                self.multiple_anchor_match_interval_count
+            ),
+            "anchor_match_filler_count": self.anchor_match_filler_count,
+            "gap_summaries": [gap.to_dict() for gap in self.gap_summaries],
+        }
+
+
+@dataclass(frozen=True)
 class DsyRegion3Gap4SlotSummary:
     slot_index: int
     value_count: int
@@ -525,6 +589,15 @@ class _DsyRegion3Gap4Chunk:
     anchor_word_index: int
     next_word_index: int
     values: tuple[int, int, int]
+
+
+@dataclass(frozen=True)
+class _DsyRegion3FirstRunInterval:
+    ordinal: int
+    anchor_word_index: int
+    next_word_index: int
+    gap_word_count: int
+    filler_values: list[int]
 
 
 def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
@@ -890,6 +963,81 @@ def summarize_dsy_region3_first_run(
     )
 
 
+def summarize_dsy_region3_first_run_links(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3FirstRunLinkSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    first_run = _first_dsy_region3_sentinel_run(words, high_word_minimum)
+    intervals = _dsy_region3_first_run_intervals(
+        words,
+        first_run,
+        high_word_minimum,
+    )
+    anchor_match_positions_by_gap: dict[int, list[int]] = {}
+    match_counts_by_interval: list[int] = []
+    interval_count_by_gap: Counter[int] = Counter()
+    no_match_count_by_gap: Counter[int] = Counter()
+    multi_match_count_by_gap: Counter[int] = Counter()
+    first_position_count_by_gap: Counter[int] = Counter()
+    second_position_count_by_gap: Counter[int] = Counter()
+    for interval in intervals:
+        gap = interval.gap_word_count
+        interval_count_by_gap[gap] += 1
+        positions = _dsy_region3_anchor_match_positions(interval)
+        anchor_match_positions_by_gap.setdefault(gap, []).extend(positions)
+        match_counts_by_interval.append(len(positions))
+        if not positions:
+            no_match_count_by_gap[gap] += 1
+        if len(positions) > 1:
+            multi_match_count_by_gap[gap] += 1
+        if 1 in positions:
+            first_position_count_by_gap[gap] += 1
+        if 2 in positions:
+            second_position_count_by_gap[gap] += 1
+
+    return DsyRegion3FirstRunLinkSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        first_run_start_word_index=first_run.start_word_index,
+        first_run_end_word_index=first_run.end_word_index,
+        first_run_sentinel_word_count=first_run.value_count,
+        interval_count=len(intervals),
+        anchor_match_interval_count=sum(1 for count in match_counts_by_interval if count),
+        no_anchor_match_interval_count=sum(
+            1 for count in match_counts_by_interval if not count
+        ),
+        multiple_anchor_match_interval_count=sum(
+            1 for count in match_counts_by_interval if count > 1
+        ),
+        anchor_match_filler_count=sum(match_counts_by_interval),
+        gap_summaries=[
+            DsyRegion3FirstRunIntervalGapSummary(
+                gap_word_count=gap,
+                interval_count=interval_count_by_gap[gap],
+                filler_word_count=interval_count_by_gap[gap] * (gap - 1),
+                anchor_match_interval_count=(
+                    interval_count_by_gap[gap] - no_match_count_by_gap[gap]
+                ),
+                no_anchor_match_interval_count=no_match_count_by_gap[gap],
+                multiple_anchor_match_interval_count=multi_match_count_by_gap[gap],
+                anchor_match_filler_count=len(anchor_match_positions_by_gap.get(gap, [])),
+                first_filler_anchor_match_count=first_position_count_by_gap[gap],
+                second_filler_anchor_match_count=second_position_count_by_gap[gap],
+                anchor_match_position_counts=_string_key_counts(
+                    anchor_match_positions_by_gap.get(gap, [])
+                ),
+            )
+            for gap in sorted(interval_count_by_gap)
+        ],
+    )
+
+
 def summarize_dsy_region3_gap4(
     path_or_file: str | Path,
     *,
@@ -1120,6 +1268,40 @@ def _first_dsy_region3_sentinel_run(
     if not runs:
         raise ValueError("DSY region 3 prefix has no high-word sentinel runs")
     return runs[0]
+
+
+def _dsy_region3_first_run_intervals(
+    words: list[int],
+    first_run: DsyRegion3SentinelRun,
+    high_word_minimum: int,
+) -> list[_DsyRegion3FirstRunInterval]:
+    sentinel_positions = [
+        word_index
+        for word_index in range(first_run.start_word_index, first_run.end_word_index + 1)
+        if words[word_index] >= high_word_minimum
+    ]
+    return [
+        _DsyRegion3FirstRunInterval(
+            ordinal=ordinal,
+            anchor_word_index=earlier,
+            next_word_index=later,
+            gap_word_count=later - earlier,
+            filler_values=words[earlier + 1 : later],
+        )
+        for ordinal, (earlier, later) in enumerate(
+            zip(sentinel_positions, sentinel_positions[1:])
+        )
+    ]
+
+
+def _dsy_region3_anchor_match_positions(
+    interval: _DsyRegion3FirstRunInterval,
+) -> list[int]:
+    return [
+        relative_position
+        for relative_position, value in enumerate(interval.filler_values, start=1)
+        if value * 2 + 2 == interval.anchor_word_index
+    ]
 
 
 def _dsy_region3_gap4_chunks(

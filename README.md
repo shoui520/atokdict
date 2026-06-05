@@ -31,6 +31,7 @@ python -m atokdict dsy-region1-records /path/to/FILE.DSY --limit 20
 python -m atokdict dsy-region3-prefix /path/to/FILE.DSY
 python -m atokdict dsy-region3-sentinels /path/to/FILE.DSY --limit 20
 python -m atokdict dsy-region3-first-run /path/to/FILE.DSY
+python -m atokdict dsy-region3-first-run-links /path/to/FILE.DSY
 python -m atokdict dsy-region3-gap4 /path/to/FILE.DSY
 python -m atokdict dsy-region3-gap4-links /path/to/FILE.DSY
 python -m atokdict inventory /path/to/dicts --json
