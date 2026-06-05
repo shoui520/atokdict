@@ -123,6 +123,16 @@ def test_summarize_dsy_dsz_record_profile(tmp_path: Path) -> None:
     assert header_slot.candidate_header_length_match_count == 3
     assert header_slot.local_record_offset_range_count == 3
 
+    header_u16_zero = summary.header_u16_slot_summaries[2]
+    assert header_u16_zero.byte_offset == 4
+    assert header_u16_zero.fixed_value == 0
+    assert header_u16_zero.zero_count == 3
+
+    header_u16_length = summary.header_u16_slot_summaries[3]
+    assert header_u16_length.byte_offset == 6
+    assert header_u16_length.fixed_value == 64
+    assert header_u16_length.candidate_header_length_match_count == 3
+
     body_slot = summary.body_prefix_u16_slot_summaries[0]
     assert body_slot.byte_offset == 64
     assert body_slot.fixed_value == 0
@@ -140,6 +150,7 @@ def test_summarize_dsy_dsz_record_profile(tmp_path: Path) -> None:
     )
     assert incompatible.model_is_compatible is False
     assert incompatible.compared_record_count == 0
+    assert incompatible.header_u16_slot_summaries == []
     assert incompatible.metric_summaries == []
 
 

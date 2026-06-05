@@ -21,6 +21,7 @@ DSY_DSZ_ACTIVE_CLASS_ORDER_MODELS = {
 }
 DSY_DSZ_RECORD_HEADER_BYTE_LENGTH = 64
 DSY_DSZ_RECORD_HEADER_U32_SLOT_COUNT = DSY_DSZ_RECORD_HEADER_BYTE_LENGTH // 4
+DSY_DSZ_RECORD_HEADER_U16_SLOT_COUNT = DSY_DSZ_RECORD_HEADER_BYTE_LENGTH // 2
 DSY_DSZ_RECORD_BODY_PREFIX_U16_SLOT_COUNT = 16
 DSY_DSZ_RECORD_PROFILE_MODULI = (4, 8, 16, 32, 64)
 
@@ -377,6 +378,7 @@ class DsyDszRecordProfileSummary:
     word_count_linear_fit: DsyDszRecordProfileLinearFit
     body_byte_length_linear_fit: DsyDszRecordProfileLinearFit
     header_u32_slot_summaries: list[DsyDszRecordSlotSummary]
+    header_u16_slot_summaries: list[DsyDszRecordSlotSummary]
     body_prefix_u16_slot_summaries: list[DsyDszRecordSlotSummary]
     metric_summaries: list[DsyDszRecordProfileMetricSummary]
 
@@ -401,6 +403,9 @@ class DsyDszRecordProfileSummary:
             "body_byte_length_linear_fit": self.body_byte_length_linear_fit.to_dict(),
             "header_u32_slot_summaries": [
                 item.to_dict() for item in self.header_u32_slot_summaries
+            ],
+            "header_u16_slot_summaries": [
+                item.to_dict() for item in self.header_u16_slot_summaries
             ],
             "body_prefix_u16_slot_summaries": [
                 item.to_dict() for item in self.body_prefix_u16_slot_summaries
@@ -608,6 +613,7 @@ def summarize_dsy_dsz_record_profile(
                 "body_byte_length",
             ),
             header_u32_slot_summaries=[],
+            header_u16_slot_summaries=[],
             body_prefix_u16_slot_summaries=[],
             metric_summaries=[],
         )
@@ -641,14 +647,18 @@ def summarize_dsy_dsz_record_profile(
         )
         for metric_name, values in metric_values.items()
     ]
-    header_slot_summaries, body_slot_summaries = _dsy_region1_record_slot_summaries(
+    (
+        header_u32_slot_summaries,
+        header_u16_slot_summaries,
+        body_slot_summaries,
+    ) = _dsy_region1_record_slot_summaries(
         dsy,
         dsy_index,
         word_counts,
     )
     candidate_header_length_match_count = (
-        header_slot_summaries[1].candidate_header_length_match_count
-        if len(header_slot_summaries) > 1
+        header_u32_slot_summaries[1].candidate_header_length_match_count
+        if len(header_u32_slot_summaries) > 1
         else 0
     )
     record_lengths = metric_values["record_byte_length"]
@@ -685,7 +695,8 @@ def summarize_dsy_dsz_record_profile(
             "dsz_word_count",
             "body_byte_length",
         ),
-        header_u32_slot_summaries=header_slot_summaries,
+        header_u32_slot_summaries=header_u32_slot_summaries,
+        header_u16_slot_summaries=header_u16_slot_summaries,
         body_prefix_u16_slot_summaries=body_slot_summaries,
         metric_summaries=metric_summaries,
     )
@@ -997,9 +1008,16 @@ def _dsy_region1_record_slot_summaries(
     dsy_path: Path,
     dsy_index,
     word_counts: list[int],
-) -> tuple[list[DsyDszRecordSlotSummary], list[DsyDszRecordSlotSummary]]:
-    header_slot_values: list[list[int | None]] = [
+) -> tuple[
+    list[DsyDszRecordSlotSummary],
+    list[DsyDszRecordSlotSummary],
+    list[DsyDszRecordSlotSummary],
+]:
+    header_u32_slot_values: list[list[int | None]] = [
         [] for _index in range(DSY_DSZ_RECORD_HEADER_U32_SLOT_COUNT)
+    ]
+    header_u16_slot_values: list[list[int | None]] = [
+        [] for _index in range(DSY_DSZ_RECORD_HEADER_U16_SLOT_COUNT)
     ]
     body_slot_values: list[list[int | None]] = [
         [] for _index in range(DSY_DSZ_RECORD_BODY_PREFIX_U16_SLOT_COUNT)
@@ -1014,10 +1032,16 @@ def _dsy_region1_record_slot_summaries(
                 + DSY_DSZ_RECORD_BODY_PREFIX_U16_SLOT_COUNT * 2
             )
             record_lengths.append(entry.byte_length)
-            for slot_index, values in enumerate(header_slot_values):
+            for slot_index, values in enumerate(header_u32_slot_values):
                 offset = slot_index * 4
                 if len(prefix) >= offset + 4:
                     values.append(int.from_bytes(prefix[offset : offset + 4], "big"))
+                else:
+                    values.append(None)
+            for slot_index, values in enumerate(header_u16_slot_values):
+                offset = slot_index * 2
+                if len(prefix) >= offset + 2:
+                    values.append(int.from_bytes(prefix[offset : offset + 2], "big"))
                 else:
                     values.append(None)
             for slot_index, values in enumerate(body_slot_values):
@@ -1038,7 +1062,20 @@ def _dsy_region1_record_slot_summaries(
             region1_payload_byte_length=dsy_index.covered_payload_byte_length,
             word_counts=word_counts,
         )
-        for slot_index, values in enumerate(header_slot_values)
+        for slot_index, values in enumerate(header_u32_slot_values)
+    ]
+    header_u16_summaries = [
+        _summarize_record_slot_values(
+            slot_kind="header_u16",
+            slot_index=slot_index,
+            byte_offset=slot_index * 2,
+            value_width_bits=16,
+            values=values,
+            record_lengths=record_lengths,
+            region1_payload_byte_length=dsy_index.covered_payload_byte_length,
+            word_counts=word_counts,
+        )
+        for slot_index, values in enumerate(header_u16_slot_values)
     ]
     body_summaries = [
         _summarize_record_slot_values(
@@ -1053,7 +1090,7 @@ def _dsy_region1_record_slot_summaries(
         )
         for slot_index, values in enumerate(body_slot_values)
     ]
-    return header_summaries, body_summaries
+    return header_summaries, header_u16_summaries, body_summaries
 
 
 def _summarize_record_slot_values(

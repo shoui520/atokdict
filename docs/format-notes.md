@@ -352,4 +352,5 @@ metrics correlate strongly with DSZ word counts. This supports the model that ea
 stores class-local access data whose size scales with the number of DSZ word rows in that class.
 The same command also reports fixed-position slot summaries. In `SANRUI`, every compatible
 region-1 record has big-endian u32 slot 1 equal to `64`, supporting a candidate 64-byte local
-record header before the class-local body.
+record header before the class-local body. The halfword view of the same field is fixed as
+header u16 slot 2 equal to `0` and header u16 slot 3 equal to `64`.
