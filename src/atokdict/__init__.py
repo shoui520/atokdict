@@ -47,9 +47,13 @@ from atokdict.linkage import DrtKeywordRange, DrtKeywordRangeSummary
 from atokdict.linkage import DrtPrimaryKeywordRange, DrtPrimaryKeywordRangeSummary
 from atokdict.linkage import DsyDszActiveClassLinkSummary
 from atokdict.linkage import DsyDszActiveClassOrderModel
+from atokdict.linkage import DsyDszRecordProfileLinearFit
+from atokdict.linkage import DsyDszRecordProfileMetricSummary
+from atokdict.linkage import DsyDszRecordProfileSummary
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
 from atokdict.linkage import summarize_dsy_dsz_active_class_links
+from atokdict.linkage import summarize_dsy_dsz_record_profile
 
 __all__ = [
     "AtokHeader",
@@ -96,6 +100,9 @@ __all__ = [
     "DszValueCountSummary",
     "DsyDszActiveClassLinkSummary",
     "DsyDszActiveClassOrderModel",
+    "DsyDszRecordProfileLinearFit",
+    "DsyDszRecordProfileMetricSummary",
+    "DsyDszRecordProfileSummary",
     "DrtKeywordRange",
     "DrtKeywordRangeSummary",
     "DrtPrimaryKeywordRange",
@@ -111,6 +118,7 @@ __all__ = [
     "summarize_drt_keyword_ranges",
     "summarize_drt_primary_keyword_ranges",
     "summarize_dsy_dsz_active_class_links",
+    "summarize_dsy_dsz_record_profile",
     "summarize_drt_primary_blocks",
     "summarize_drt_primary_segments",
     "summarize_drt_root_child_blocks",

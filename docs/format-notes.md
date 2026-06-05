@@ -344,3 +344,9 @@ counts when payload records are aligned to sorted active DSZ class IDs after dro
 active class. This suggests region 1 is an active-class access table, and record length is driven
 primarily by class word count. `THESAURUS.DSY` is a stub and does not expose a compatible region-1
 payload table.
+
+The `dsy-dsz-record-profile` command profiles DSY region-1 records under an active-class ordering
+model without dumping record bytes. For `SANRUI` using the `drop_last_active_class` model,
+record length is roughly `101 + 158.46 * DSZ word_count`, and several internal candidate-count
+metrics correlate strongly with DSZ word counts. This supports the model that each region-1 record
+stores class-local access data whose size scales with the number of DSZ word rows in that class.

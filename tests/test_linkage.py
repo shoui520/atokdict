@@ -7,6 +7,7 @@ from atokdict.companion import decode_companion_bytes
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
 from atokdict.linkage import summarize_dsy_dsz_active_class_links
+from atokdict.linkage import summarize_dsy_dsz_record_profile
 
 
 def test_summarize_drt_keyword_ranges(tmp_path: Path) -> None:
@@ -90,6 +91,41 @@ def test_summarize_dsy_dsz_active_class_links(tmp_path: Path) -> None:
     assert drop_last.length_to_word_count_pearson == 1.0
     assert drop_last.length_to_word_count_spearman == 1.0
     assert drop_last.length_to_group_count_pearson == 1.0
+
+
+def test_summarize_dsy_dsz_record_profile(tmp_path: Path) -> None:
+    dsy = tmp_path / "sample.DSY"
+    dsz = tmp_path / "sample.DSZ"
+    _write_synthetic_dsy_region1(dsy, record_lengths=[100, 200, 300])
+    _write_synthetic_dsz_active_classes(dsz)
+
+    summary = summarize_dsy_dsz_record_profile(dsy)
+
+    assert summary.model_name == "drop_last_active_class"
+    assert summary.model_is_compatible is True
+    assert summary.compared_record_count == 3
+    assert summary.first_active_class_id == 10
+    assert summary.last_active_class_id == 30
+    assert summary.region1_payload_byte_length == 600
+    assert summary.record_byte_length_mod_counts["4"] == {"0": 3}
+    assert summary.word_count_linear_fit.x_metric_name == "dsz_word_count"
+    assert summary.word_count_linear_fit.y_metric_name == "record_byte_length"
+    assert summary.word_count_linear_fit.slope == 100.0
+    assert summary.word_count_linear_fit.intercept == 0.0
+
+    metrics = {item.metric_name: item for item in summary.metric_summaries}
+    assert metrics["record_byte_length"].value_sum == 600
+    assert metrics["record_byte_length"].correlation_to_word_count_pearson == 1.0
+    assert metrics["u16_zero_count"].value_sum == 300
+    assert metrics["u16_zero_count"].correlation_to_word_count_pearson == 1.0
+
+    incompatible = summarize_dsy_dsz_record_profile(
+        dsy,
+        model_name="all_active_classes",
+    )
+    assert incompatible.model_is_compatible is False
+    assert incompatible.compared_record_count == 0
+    assert incompatible.metric_summaries == []
 
 
 def _write_synthetic_drt(path: Path) -> None:
@@ -264,6 +300,16 @@ def _create_synthetic_dsz_schema(connection: sqlite3.Connection) -> None:
           TORIKOMI    INTEGER,
           OKURI       INTEGER,
           DESCRIPTION TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE TABLE_WORD_IHYOKI(
+          WORD_ID  INTEGER,
+          CLASS_ID INTEGER,
+          HYOKI    TEXT,
+          HINSHI   INTEGER
         )
         """
     )

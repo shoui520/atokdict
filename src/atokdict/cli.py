@@ -34,6 +34,7 @@ from atokdict.inventory import inventory_to_dict, scan_inventory
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
 from atokdict.linkage import summarize_drt_keyword_ranges
 from atokdict.linkage import summarize_dsy_dsz_active_class_links
+from atokdict.linkage import summarize_dsy_dsz_record_profile
 from atokdict.textscan import scan_cp932_runs, scan_utf16be_runs
 
 
@@ -112,6 +113,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     dsy_dsz_active_class_parser.add_argument("dsy_path", type=Path)
     dsy_dsz_active_class_parser.add_argument("dsz_path", type=Path, nargs="?")
+
+    dsy_dsz_record_profile_parser = subparsers.add_parser(
+        "dsy-dsz-record-profile",
+        help="profile DSY region-1 records aligned to DSZ active classes",
+    )
+    dsy_dsz_record_profile_parser.add_argument("dsy_path", type=Path)
+    dsy_dsz_record_profile_parser.add_argument("dsz_path", type=Path, nargs="?")
+    dsy_dsz_record_profile_parser.add_argument(
+        "--model",
+        choices=[
+            "all_active_classes",
+            "drop_first_active_class",
+            "drop_last_active_class",
+        ],
+        default="drop_last_active_class",
+    )
 
     dsy_map_parser = subparsers.add_parser(
         "dsy-map", help="parse the observed DSY metadata and region map"
@@ -317,6 +334,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "dsy-dsz-active-classes":
         summary = summarize_dsy_dsz_active_class_links(args.dsy_path, args.dsz_path)
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-dsz-record-profile":
+        summary = summarize_dsy_dsz_record_profile(
+            args.dsy_path,
+            args.dsz_path,
+            model_name=args.model,
+        )
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
         return 0
 

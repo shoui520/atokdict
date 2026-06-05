@@ -11,7 +11,15 @@ from atokdict.companion import decoded_companion_tempfile
 from atokdict.drt import DrtPrimaryIndex
 from atokdict.drt import PRIMARY_INDEX_RECORD_SIZE
 from atokdict.drt import parse_drt_primary_index, parse_drt_root_index
-from atokdict.dsy import parse_dsy_region1_index
+from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
+
+
+DSY_DSZ_ACTIVE_CLASS_ORDER_MODELS = {
+    "all_active_classes",
+    "drop_first_active_class",
+    "drop_last_active_class",
+}
+DSY_DSZ_RECORD_PROFILE_MODULI = (4, 8, 16, 32, 64)
 
 
 @dataclass(frozen=True)
@@ -238,6 +246,104 @@ class DsyDszActiveClassLinkSummary:
         }
 
 
+@dataclass(frozen=True)
+class DsyDszRecordProfileMetricSummary:
+    metric_name: str
+    value_sum: int
+    min_value: int | None
+    max_value: int | None
+    nonzero_record_count: int
+    correlation_to_group_count_pearson: float | None
+    correlation_to_group_count_spearman: float | None
+    correlation_to_word_count_pearson: float | None
+    correlation_to_word_count_spearman: float | None
+    correlation_to_alt_form_count_pearson: float | None
+    correlation_to_alt_form_count_spearman: float | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "metric_name": self.metric_name,
+            "value_sum": self.value_sum,
+            "min_value": self.min_value,
+            "max_value": self.max_value,
+            "nonzero_record_count": self.nonzero_record_count,
+            "correlation_to_group_count_pearson": (
+                self.correlation_to_group_count_pearson
+            ),
+            "correlation_to_group_count_spearman": (
+                self.correlation_to_group_count_spearman
+            ),
+            "correlation_to_word_count_pearson": (
+                self.correlation_to_word_count_pearson
+            ),
+            "correlation_to_word_count_spearman": (
+                self.correlation_to_word_count_spearman
+            ),
+            "correlation_to_alt_form_count_pearson": (
+                self.correlation_to_alt_form_count_pearson
+            ),
+            "correlation_to_alt_form_count_spearman": (
+                self.correlation_to_alt_form_count_spearman
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class DsyDszRecordProfileLinearFit:
+    x_metric_name: str
+    y_metric_name: str
+    slope: float | None
+    intercept: float | None
+    residual_min: float | None
+    residual_max: float | None
+    residual_average_absolute: float | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "x_metric_name": self.x_metric_name,
+            "y_metric_name": self.y_metric_name,
+            "slope": self.slope,
+            "intercept": self.intercept,
+            "residual_min": self.residual_min,
+            "residual_max": self.residual_max,
+            "residual_average_absolute": self.residual_average_absolute,
+        }
+
+
+@dataclass(frozen=True)
+class DsyDszRecordProfileSummary:
+    dsy_path: str
+    dsz_path: str
+    model_name: str
+    model_is_compatible: bool
+    dsy_payload_record_count: int
+    candidate_active_class_count: int
+    compared_record_count: int
+    first_active_class_id: int | None
+    last_active_class_id: int | None
+    region1_payload_byte_length: int
+    record_byte_length_mod_counts: dict[str, dict[str, int]]
+    word_count_linear_fit: DsyDszRecordProfileLinearFit
+    metric_summaries: list[DsyDszRecordProfileMetricSummary]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "dsy_path": self.dsy_path,
+            "dsz_path": self.dsz_path,
+            "model_name": self.model_name,
+            "model_is_compatible": self.model_is_compatible,
+            "dsy_payload_record_count": self.dsy_payload_record_count,
+            "candidate_active_class_count": self.candidate_active_class_count,
+            "compared_record_count": self.compared_record_count,
+            "first_active_class_id": self.first_active_class_id,
+            "last_active_class_id": self.last_active_class_id,
+            "region1_payload_byte_length": self.region1_payload_byte_length,
+            "record_byte_length_mod_counts": self.record_byte_length_mod_counts,
+            "word_count_linear_fit": self.word_count_linear_fit.to_dict(),
+            "metric_summaries": [item.to_dict() for item in self.metric_summaries],
+        }
+
+
 def summarize_drt_keyword_ranges(
     drt_path: str | Path,
     drw_path: str | Path | None = None,
@@ -392,6 +498,99 @@ def summarize_dsy_dsz_active_class_links(
     )
 
 
+def summarize_dsy_dsz_record_profile(
+    dsy_path: str | Path,
+    dsz_path: str | Path | None = None,
+    *,
+    model_name: str = "drop_last_active_class",
+) -> DsyDszRecordProfileSummary:
+    if model_name not in DSY_DSZ_ACTIVE_CLASS_ORDER_MODELS:
+        raise ValueError(f"unsupported active-class order model: {model_name}")
+
+    dsy = Path(dsy_path)
+    dsz = Path(dsz_path) if dsz_path is not None else dsy.with_suffix(".DSZ")
+    if not dsz.exists():
+        raise ValueError(f"companion DSZ file does not exist: {dsz}")
+
+    dsy_index = parse_dsy_region1_index(dsy)
+    dsy_map = parse_dsy_map(dsy)
+    dsz_stats = _read_dsz_active_class_stats(dsz)
+    active_class_ids = _select_active_class_model(
+        dsz_stats.active_class_ids,
+        model_name,
+    )
+    model_is_compatible = len(active_class_ids) == len(dsy_index.entries)
+    if not model_is_compatible:
+        return DsyDszRecordProfileSummary(
+            dsy_path=str(dsy),
+            dsz_path=str(dsz),
+            model_name=model_name,
+            model_is_compatible=False,
+            dsy_payload_record_count=len(dsy_index.entries),
+            candidate_active_class_count=len(active_class_ids),
+            compared_record_count=0,
+            first_active_class_id=active_class_ids[0] if active_class_ids else None,
+            last_active_class_id=active_class_ids[-1] if active_class_ids else None,
+            region1_payload_byte_length=dsy_index.covered_payload_byte_length,
+            record_byte_length_mod_counts={},
+            word_count_linear_fit=_linear_fit([], [], "dsz_word_count", "record_byte_length"),
+            metric_summaries=[],
+        )
+
+    group_counts = [
+        dsz_stats.group_counts_by_class.get(class_id, 0)
+        for class_id in active_class_ids
+    ]
+    word_counts = [
+        dsz_stats.word_counts_by_class.get(class_id, 0)
+        for class_id in active_class_ids
+    ]
+    alt_counts = [
+        dsz_stats.alt_form_counts_by_class.get(class_id, 0)
+        for class_id in active_class_ids
+    ]
+    metric_values = _dsy_region1_record_profile_metrics(
+        dsy,
+        dsy_index,
+        dsy_map,
+        dsz_stats,
+    )
+
+    metric_summaries = [
+        _summarize_record_profile_metric(
+            metric_name,
+            values,
+            group_counts,
+            word_counts,
+            alt_counts,
+        )
+        for metric_name, values in metric_values.items()
+    ]
+
+    return DsyDszRecordProfileSummary(
+        dsy_path=str(dsy),
+        dsz_path=str(dsz),
+        model_name=model_name,
+        model_is_compatible=True,
+        dsy_payload_record_count=len(dsy_index.entries),
+        candidate_active_class_count=len(active_class_ids),
+        compared_record_count=len(active_class_ids),
+        first_active_class_id=active_class_ids[0] if active_class_ids else None,
+        last_active_class_id=active_class_ids[-1] if active_class_ids else None,
+        region1_payload_byte_length=dsy_index.covered_payload_byte_length,
+        record_byte_length_mod_counts=_record_length_mod_counts(
+            metric_values["record_byte_length"]
+        ),
+        word_count_linear_fit=_linear_fit(
+            word_counts,
+            metric_values["record_byte_length"],
+            "dsz_word_count",
+            "record_byte_length",
+        ),
+        metric_summaries=metric_summaries,
+    )
+
+
 def summarize_drt_primary_keyword_ranges(
     drt_path: str | Path,
     drw_path: str | Path | None = None,
@@ -505,8 +704,16 @@ class _DszActiveClassStats:
     class_count: int
     group_count: int
     word_count: int
+    alt_form_count: int
+    class_id_min: int | None
+    class_id_max: int | None
+    group_id_min: int | None
+    group_id_max: int | None
+    word_id_min: int | None
+    word_id_max: int | None
     group_counts_by_class: dict[int, int]
     word_counts_by_class: dict[int, int]
+    alt_form_counts_by_class: dict[int, int]
     group_active_class_ids: set[int]
     word_active_class_ids: set[int]
     active_class_ids: list[int]
@@ -522,6 +729,13 @@ def _read_dsz_active_class_stats(dsz_path: Path) -> _DszActiveClassStats:
             class_count = _sqlite_scalar_int(connection, "SELECT COUNT(*) FROM TABLE_CLASS")
             group_count = _sqlite_scalar_int(connection, "SELECT COUNT(*) FROM TABLE_GROUP")
             word_count = _sqlite_scalar_int(connection, "SELECT COUNT(*) FROM TABLE_WORD")
+            alt_form_count = _sqlite_scalar_int(
+                connection,
+                "SELECT COUNT(*) FROM TABLE_WORD_IHYOKI",
+            )
+            class_id_min, class_id_max = _read_min_max_id(connection, "TABLE_CLASS", "CLASS_ID")
+            group_id_min, group_id_max = _read_min_max_id(connection, "TABLE_GROUP", "GROUP_ID")
+            word_id_min, word_id_max = _read_min_max_id(connection, "TABLE_WORD", "ID")
             group_counts_by_class = _read_count_by_class(
                 connection,
                 "SELECT CLASS_ID, COUNT(*) FROM TABLE_GROUP GROUP BY CLASS_ID",
@@ -529,6 +743,10 @@ def _read_dsz_active_class_stats(dsz_path: Path) -> _DszActiveClassStats:
             word_counts_by_class = _read_count_by_class(
                 connection,
                 "SELECT CLASS_ID, COUNT(*) FROM TABLE_WORD GROUP BY CLASS_ID",
+            )
+            alt_form_counts_by_class = _read_count_by_class(
+                connection,
+                "SELECT CLASS_ID, COUNT(*) FROM TABLE_WORD_IHYOKI GROUP BY CLASS_ID",
             )
         finally:
             connection.close()
@@ -540,8 +758,16 @@ def _read_dsz_active_class_stats(dsz_path: Path) -> _DszActiveClassStats:
         class_count=class_count,
         group_count=group_count,
         word_count=word_count,
+        alt_form_count=alt_form_count,
+        class_id_min=class_id_min,
+        class_id_max=class_id_max,
+        group_id_min=group_id_min,
+        group_id_max=group_id_max,
+        word_id_min=word_id_min,
+        word_id_max=word_id_max,
         group_counts_by_class=group_counts_by_class,
         word_counts_by_class=word_counts_by_class,
+        alt_form_counts_by_class=alt_form_counts_by_class,
         group_active_class_ids=group_active_class_ids,
         word_active_class_ids=word_active_class_ids,
         active_class_ids=sorted(group_active_class_ids | word_active_class_ids),
@@ -549,6 +775,122 @@ def _read_dsz_active_class_stats(dsz_path: Path) -> _DszActiveClassStats:
         group_only_active_class_ids=group_active_class_ids - word_active_class_ids,
         word_only_active_class_ids=word_active_class_ids - group_active_class_ids,
     )
+
+
+def _select_active_class_model(
+    active_class_ids: list[int],
+    model_name: str,
+) -> list[int]:
+    if model_name == "all_active_classes":
+        return active_class_ids
+    if model_name == "drop_first_active_class":
+        return active_class_ids[1:]
+    if model_name == "drop_last_active_class":
+        return active_class_ids[:-1]
+    raise ValueError(f"unsupported active-class order model: {model_name}")
+
+
+def _dsy_region1_record_profile_metrics(
+    dsy_path: Path,
+    dsy_index,
+    dsy_map,
+    dsz_stats: _DszActiveClassStats,
+) -> dict[str, list[int]]:
+    metrics = {
+        "record_byte_length": [],
+        "u16_zero_count": [],
+        "u16_high_ffxx_count": [],
+        "u16_marker_count": [],
+        "u16_region1_record_index_range_count": [],
+        "u32_absolute_region1_offset_count": [],
+        "u32_absolute_region3_offset_count": [],
+        "u32_region1_payload_relative_offset_count": [],
+        "u32_class_id_range_count": [],
+        "u32_group_id_range_count": [],
+        "u32_word_id_range_count": [],
+    }
+    region1 = dsy_map.regions[1]
+    region3 = dsy_map.regions[3]
+    with dsy_path.open("rb") as handle:
+        for entry in dsy_index.entries:
+            handle.seek(entry.payload_offset)
+            data = handle.read(entry.byte_length)
+            record_metrics = _profile_dsy_region1_record(
+                data,
+                dsy_index,
+                region1.data_offset,
+                region1.end_offset,
+                region3.data_offset,
+                region3.end_offset,
+                dsz_stats,
+            )
+            for metric_name, value in record_metrics.items():
+                metrics[metric_name].append(value)
+    return metrics
+
+
+def _profile_dsy_region1_record(
+    data: bytes,
+    dsy_index,
+    region1_offset: int,
+    region1_end_offset: int,
+    region3_offset: int,
+    region3_end_offset: int,
+    dsz_stats: _DszActiveClassStats,
+) -> dict[str, int]:
+    u16_zero_count = 0
+    u16_high_ffxx_count = 0
+    u16_marker_count = 0
+    u16_region1_record_index_range_count = 0
+    for offset in range(0, len(data) - 1, 2):
+        value = int.from_bytes(data[offset : offset + 2], "big")
+        if value == 0:
+            u16_zero_count += 1
+        if value >= 0xFF00:
+            u16_high_ffxx_count += 1
+        if value in (0xFFFF, 0xFFFE, 0xFFFD):
+            u16_marker_count += 1
+        if 0 <= value <= len(dsy_index.entries):
+            u16_region1_record_index_range_count += 1
+
+    u32_absolute_region1_offset_count = 0
+    u32_absolute_region3_offset_count = 0
+    u32_region1_payload_relative_offset_count = 0
+    u32_class_id_range_count = 0
+    u32_group_id_range_count = 0
+    u32_word_id_range_count = 0
+    for offset in range(0, len(data) - 3, 4):
+        value = int.from_bytes(data[offset : offset + 4], "big")
+        if region1_offset <= value < region1_end_offset:
+            u32_absolute_region1_offset_count += 1
+        if region3_offset <= value < region3_end_offset:
+            u32_absolute_region3_offset_count += 1
+        if 0 <= value < dsy_index.covered_payload_byte_length:
+            u32_region1_payload_relative_offset_count += 1
+        if _in_optional_range(value, dsz_stats.class_id_min, dsz_stats.class_id_max):
+            u32_class_id_range_count += 1
+        if _in_optional_range(value, dsz_stats.group_id_min, dsz_stats.group_id_max):
+            u32_group_id_range_count += 1
+        if _in_optional_range(value, dsz_stats.word_id_min, dsz_stats.word_id_max):
+            u32_word_id_range_count += 1
+
+    return {
+        "record_byte_length": len(data),
+        "u16_zero_count": u16_zero_count,
+        "u16_high_ffxx_count": u16_high_ffxx_count,
+        "u16_marker_count": u16_marker_count,
+        "u16_region1_record_index_range_count": (
+            u16_region1_record_index_range_count
+        ),
+        "u32_absolute_region1_offset_count": u32_absolute_region1_offset_count,
+        "u32_absolute_region3_offset_count": u32_absolute_region3_offset_count,
+        "u32_region1_payload_relative_offset_count": (
+            u32_region1_payload_relative_offset_count
+        ),
+        "u32_class_id_range_count": u32_class_id_range_count,
+        "u32_group_id_range_count": u32_group_id_range_count,
+        "u32_word_id_range_count": u32_word_id_range_count,
+    }
 
 
 def _read_count_by_class(
@@ -559,6 +901,121 @@ def _read_count_by_class(
         int(class_id): int(row_count)
         for class_id, row_count in connection.execute(sql).fetchall()
     }
+
+
+def _read_min_max_id(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+) -> tuple[int | None, int | None]:
+    table = _quote_identifier(table_name)
+    column = _quote_identifier(column_name)
+    minimum, maximum = connection.execute(
+        f"SELECT MIN({column}), MAX({column}) FROM {table}"
+    ).fetchone()
+    return (
+        None if minimum is None else int(minimum),
+        None if maximum is None else int(maximum),
+    )
+
+
+def _summarize_record_profile_metric(
+    metric_name: str,
+    values: list[int],
+    group_counts: list[int],
+    word_counts: list[int],
+    alt_counts: list[int],
+) -> DsyDszRecordProfileMetricSummary:
+    return DsyDszRecordProfileMetricSummary(
+        metric_name=metric_name,
+        value_sum=sum(values),
+        min_value=min(values) if values else None,
+        max_value=max(values) if values else None,
+        nonzero_record_count=sum(1 for value in values if value),
+        correlation_to_group_count_pearson=_pearson(values, group_counts),
+        correlation_to_group_count_spearman=_spearman(values, group_counts),
+        correlation_to_word_count_pearson=_pearson(values, word_counts),
+        correlation_to_word_count_spearman=_spearman(values, word_counts),
+        correlation_to_alt_form_count_pearson=_pearson(values, alt_counts),
+        correlation_to_alt_form_count_spearman=_spearman(values, alt_counts),
+    )
+
+
+def _record_length_mod_counts(record_lengths: list[int]) -> dict[str, dict[str, int]]:
+    return {
+        str(modulus): _count_strings(length % modulus for length in record_lengths)
+        for modulus in DSY_DSZ_RECORD_PROFILE_MODULI
+    }
+
+
+def _linear_fit(
+    xs: list[int] | list[float],
+    ys: list[int] | list[float],
+    x_metric_name: str,
+    y_metric_name: str,
+) -> DsyDszRecordProfileLinearFit:
+    if len(xs) != len(ys) or len(xs) < 2:
+        return DsyDszRecordProfileLinearFit(
+            x_metric_name=x_metric_name,
+            y_metric_name=y_metric_name,
+            slope=None,
+            intercept=None,
+            residual_min=None,
+            residual_max=None,
+            residual_average_absolute=None,
+        )
+    x_mean = sum(xs) / len(xs)
+    y_mean = sum(ys) / len(ys)
+    x_variance = sum((value - x_mean) ** 2 for value in xs)
+    if x_variance == 0:
+        return DsyDszRecordProfileLinearFit(
+            x_metric_name=x_metric_name,
+            y_metric_name=y_metric_name,
+            slope=None,
+            intercept=None,
+            residual_min=None,
+            residual_max=None,
+            residual_average_absolute=None,
+        )
+    slope = sum(
+        (x_value - x_mean) * (y_value - y_mean)
+        for x_value, y_value in zip(xs, ys, strict=True)
+    ) / x_variance
+    intercept = y_mean - slope * x_mean
+    residuals = [
+        y_value - (intercept + slope * x_value)
+        for x_value, y_value in zip(xs, ys, strict=True)
+    ]
+    return DsyDszRecordProfileLinearFit(
+        x_metric_name=x_metric_name,
+        y_metric_name=y_metric_name,
+        slope=slope,
+        intercept=intercept,
+        residual_min=min(residuals),
+        residual_max=max(residuals),
+        residual_average_absolute=sum(abs(value) for value in residuals)
+        / len(residuals),
+    )
+
+
+def _count_strings(values) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value)
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: int(item[0])))
+
+
+def _in_optional_range(
+    value: int,
+    minimum: int | None,
+    maximum: int | None,
+) -> bool:
+    return minimum is not None and maximum is not None and minimum <= value <= maximum
+
+
+def _quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
 
 
 def _dsy_dsz_active_class_order_model(
