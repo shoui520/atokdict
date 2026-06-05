@@ -107,6 +107,12 @@ The `dsy-region1-records` command reports bounded diagnostics for those indexed 
 and the trailer: prefix hashes, byte ratios, marker positions/counts, and candidate absolute or
 relative offset counts by DSY region. It does not dump payload bytes or decoded text.
 
+Region 3 begins with a 16-bit even value that is a plausible prefix byte length in every observed
+DSY file. The prefix contains the recurring marker words and many high `0xffxx` sentinel-like
+words; a bounded scan immediately after the prefix has not shown those marker words. The
+`dsy-region3-prefix` command reports this split candidate with hashes, marker counts, 16-bit word
+counts, and candidate offset-reference counts.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20

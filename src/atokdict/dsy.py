@@ -17,6 +17,8 @@ DSY_REGION_RECORD_SIZE = 8
 DSY_REGION1_INDEX_RECORD_SIZE = 8
 DSY_REGION1_RECORD_SCAN_BYTES = 4096
 DSY_REGION1_RECORD_HASH_BYTES = 64
+DSY_REGION3_TAIL_SCAN_BYTES = 4096
+DSY_REGION3_HASH_BYTES = 64
 DSY_REGION_HASH_BYTES = 64
 DSY_REGION_SCAN_BYTES = 4096
 
@@ -237,6 +239,58 @@ class DsyRegion1RecordDiagnostics:
         }
 
 
+@dataclass(frozen=True)
+class DsyRegion3PrefixSummary:
+    path: str | None
+    region_offset: int
+    region_byte_length: int
+    prefix_byte_length: int
+    prefix_word_count: int
+    prefix_end_offset: int
+    tail_byte_length: int
+    tail_scan_byte_length: int
+    prefix_sha256: str
+    tail_prefix_sha256: str
+    header_u16_words: list[int]
+    prefix_marker_counts: dict[str, int]
+    prefix_marker_first_offsets: dict[str, int | None]
+    tail_marker_counts: dict[str, int]
+    tail_marker_first_offsets: dict[str, int | None]
+    prefix_high_u16_word_count: int
+    prefix_zero_u16_word_count: int
+    prefix_unique_u16_word_count: int
+    possible_absolute_offsets_by_region: dict[str, int]
+    possible_region_relative_offsets: dict[str, int]
+    possible_region1_payload_relative_offsets: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "region_byte_length": self.region_byte_length,
+            "prefix_byte_length": self.prefix_byte_length,
+            "prefix_word_count": self.prefix_word_count,
+            "prefix_end_offset": self.prefix_end_offset,
+            "tail_byte_length": self.tail_byte_length,
+            "tail_scan_byte_length": self.tail_scan_byte_length,
+            "prefix_sha256": self.prefix_sha256,
+            "tail_prefix_sha256": self.tail_prefix_sha256,
+            "header_u16_words": self.header_u16_words,
+            "prefix_marker_counts": self.prefix_marker_counts,
+            "prefix_marker_first_offsets": self.prefix_marker_first_offsets,
+            "tail_marker_counts": self.tail_marker_counts,
+            "tail_marker_first_offsets": self.tail_marker_first_offsets,
+            "prefix_high_u16_word_count": self.prefix_high_u16_word_count,
+            "prefix_zero_u16_word_count": self.prefix_zero_u16_word_count,
+            "prefix_unique_u16_word_count": self.prefix_unique_u16_word_count,
+            "possible_absolute_offsets_by_region": self.possible_absolute_offsets_by_region,
+            "possible_region_relative_offsets": self.possible_region_relative_offsets,
+            "possible_region1_payload_relative_offsets": (
+                self.possible_region1_payload_relative_offsets
+            ),
+        }
+
+
 def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
     path = Path(path_or_file)
     header = parse_header(path)
@@ -448,6 +502,72 @@ def summarize_dsy_region1_records(
     )
 
 
+def summarize_dsy_region3_prefix(
+    path_or_file: str | Path,
+    *,
+    tail_scan_bytes: int = DSY_REGION3_TAIL_SCAN_BYTES,
+    prefix_hash_bytes: int = DSY_REGION3_HASH_BYTES,
+) -> DsyRegion3PrefixSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    index = parse_dsy_region1_index(path)
+    if len(dsy_map.regions) < 4:
+        raise ValueError("DSY region 3 prefix diagnostics require four mapped regions")
+
+    region = dsy_map.regions[3]
+    with path.open("rb") as handle:
+        handle.seek(region.data_offset)
+        prefix_length_bytes = handle.read(2)
+        if len(prefix_length_bytes) != 2:
+            raise ValueError("DSY region 3 is too small to contain a prefix length")
+        prefix_byte_length = int.from_bytes(prefix_length_bytes, "big")
+        if prefix_byte_length % 2:
+            raise ValueError("DSY region 3 prefix length is not 16-bit aligned")
+        if prefix_byte_length > region.byte_length:
+            raise ValueError("DSY region 3 prefix length exceeds region length")
+
+        handle.seek(region.data_offset)
+        prefix = handle.read(prefix_byte_length)
+        if len(prefix) != prefix_byte_length:
+            raise ValueError("DSY region 3 prefix is truncated")
+        tail_byte_length = region.byte_length - prefix_byte_length
+        tail_scan = handle.read(min(tail_byte_length, tail_scan_bytes))
+
+    prefix_words = _u16_words(prefix)
+    return DsyRegion3PrefixSummary(
+        path=str(path),
+        region_offset=region.data_offset,
+        region_byte_length=region.byte_length,
+        prefix_byte_length=prefix_byte_length,
+        prefix_word_count=len(prefix_words),
+        prefix_end_offset=region.data_offset + prefix_byte_length,
+        tail_byte_length=tail_byte_length,
+        tail_scan_byte_length=len(tail_scan),
+        prefix_sha256=hashlib.sha256(prefix[:prefix_hash_bytes]).hexdigest(),
+        tail_prefix_sha256=hashlib.sha256(tail_scan[:prefix_hash_bytes]).hexdigest(),
+        header_u16_words=prefix_words[:16],
+        prefix_marker_counts=_marker_counts(prefix),
+        prefix_marker_first_offsets=_marker_first_offsets(prefix),
+        tail_marker_counts=_marker_counts(tail_scan),
+        tail_marker_first_offsets=_marker_first_offsets(tail_scan),
+        prefix_high_u16_word_count=sum(1 for word in prefix_words if word >= 0xFF00),
+        prefix_zero_u16_word_count=sum(1 for word in prefix_words if word == 0),
+        prefix_unique_u16_word_count=len(set(prefix_words)),
+        possible_absolute_offsets_by_region=_possible_absolute_offsets_by_region(
+            prefix,
+            dsy_map,
+        ),
+        possible_region_relative_offsets=_possible_region_relative_offsets(
+            prefix,
+            dsy_map,
+        ),
+        possible_region1_payload_relative_offsets=_possible_relative_offset_count(
+            prefix,
+            index.covered_payload_byte_length,
+        ),
+    )
+
+
 def summarize_dsy_regions(
     path_or_file: str | Path,
     *,
@@ -521,6 +641,13 @@ def _marker_counts(data: bytes) -> dict[str, int]:
         if key in counts:
             counts[key] += 1
     return counts
+
+
+def _u16_words(data: bytes) -> list[int]:
+    return [
+        int.from_bytes(data[offset : offset + 2], "big")
+        for offset in range(0, len(data) - 1, 2)
+    ]
 
 
 def _summarize_dsy_region1_record_scan(

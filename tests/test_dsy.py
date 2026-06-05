@@ -4,6 +4,7 @@ from pathlib import Path
 
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
 from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
+from atokdict.dsy import summarize_dsy_region3_prefix
 
 
 def test_parse_synthetic_dsy_map(tmp_path: Path) -> None:
@@ -163,6 +164,53 @@ def test_summarize_synthetic_dsy_region1_records(tmp_path: Path) -> None:
     assert trailer.record_offset == 0x58A
     assert trailer.marker_counts["0xfffd"] == 1
     assert trailer.possible_region1_payload_relative_offsets >= 1
+
+
+def test_summarize_synthetic_dsy_region3_prefix(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=2)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+
+    data[0x560:0x570] = (
+        (16).to_bytes(4, "big")
+        + (0).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+    )
+    prefix = bytearray(32)
+    prefix[0:2] = (32).to_bytes(2, "big")
+    prefix[2:4] = (0xFFFF).to_bytes(2, "big")
+    prefix[4:8] = (0x570).to_bytes(4, "big")
+    prefix[8:12] = (4).to_bytes(4, "big")
+    prefix[12:16] = (0x5C0).to_bytes(4, "big")
+    data[0x5C0:0x5E0] = prefix
+    data[0x5E0:0x5E2] = (0xFFFE).to_bytes(2, "big")
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_prefix(path, tail_scan_bytes=16)
+
+    assert summary.region_offset == 0x5C0
+    assert summary.region_byte_length == 0x1A0
+    assert summary.prefix_byte_length == 32
+    assert summary.prefix_word_count == 16
+    assert summary.prefix_end_offset == 0x5E0
+    assert summary.tail_byte_length == 0x180
+    assert summary.tail_scan_byte_length == 16
+    assert summary.header_u16_words[:2] == [32, 0xFFFF]
+    assert summary.prefix_marker_counts["0xffff"] == 1
+    assert summary.prefix_marker_first_offsets["0xffff"] == 2
+    assert summary.tail_marker_counts["0xfffe"] == 1
+    assert summary.tail_marker_first_offsets["0xfffe"] == 0
+    assert summary.prefix_high_u16_word_count == 1
+    assert summary.prefix_zero_u16_word_count >= 1
+    assert summary.possible_absolute_offsets_by_region["region_1"] >= 1
+    assert summary.possible_absolute_offsets_by_region["region_3"] >= 1
+    assert summary.possible_region1_payload_relative_offsets >= 1
 
 
 def _write_region(data: bytearray, descriptor_offset: int, offset: int, length: int) -> None:
