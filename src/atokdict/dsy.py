@@ -15,6 +15,8 @@ DSY_REGION_TABLE_OFFSET = 0x330
 DSY_REGION_TABLE_END = 0x360
 DSY_REGION_RECORD_SIZE = 8
 DSY_REGION1_INDEX_RECORD_SIZE = 8
+DSY_REGION1_RECORD_SCAN_BYTES = 4096
+DSY_REGION1_RECORD_HASH_BYTES = 64
 DSY_REGION_HASH_BYTES = 64
 DSY_REGION_SCAN_BYTES = 4096
 
@@ -152,6 +154,86 @@ class DsyRegion1Index:
             "trailer_byte_length": self.trailer_byte_length,
             "entries_returned": len(entries),
             "entries": [entry.to_dict() for entry in entries],
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion1RecordSummary:
+    record_kind: str
+    table_record_index: int | None
+    record_offset: int
+    region_relative_offset: int
+    payload_relative_offset: int | None
+    byte_length: int
+    scan_byte_length: int
+    prefix_sha256: str
+    nul_byte_ratio: float
+    printable_ascii_ratio: float
+    unique_byte_count: int
+    marker_counts: dict[str, int]
+    marker_first_offsets: dict[str, int | None]
+    possible_absolute_offsets_by_region: dict[str, int]
+    possible_region_relative_offsets: dict[str, int]
+    possible_region1_payload_relative_offsets: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "record_kind": self.record_kind,
+            "table_record_index": self.table_record_index,
+            "record_offset": self.record_offset,
+            "region_relative_offset": self.region_relative_offset,
+            "payload_relative_offset": self.payload_relative_offset,
+            "byte_length": self.byte_length,
+            "scan_byte_length": self.scan_byte_length,
+            "prefix_sha256": self.prefix_sha256,
+            "nul_byte_ratio": self.nul_byte_ratio,
+            "printable_ascii_ratio": self.printable_ascii_ratio,
+            "unique_byte_count": self.unique_byte_count,
+            "marker_counts": self.marker_counts,
+            "marker_first_offsets": self.marker_first_offsets,
+            "possible_absolute_offsets_by_region": self.possible_absolute_offsets_by_region,
+            "possible_region_relative_offsets": self.possible_region_relative_offsets,
+            "possible_region1_payload_relative_offsets": (
+                self.possible_region1_payload_relative_offsets
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion1RecordDiagnostics:
+    path: str | None
+    region_offset: int
+    region_byte_length: int
+    payload_base_offset: int
+    covered_payload_byte_length: int
+    trailer_offset: int
+    trailer_byte_length: int
+    payload_record_count: int
+    scan_bytes: int
+    prefix_hash_bytes: int
+    payload_records: list[DsyRegion1RecordSummary]
+    trailer_record: DsyRegion1RecordSummary
+
+    def to_dict(self, *, entry_limit: int | None = None) -> dict[str, object]:
+        records = (
+            self.payload_records
+            if entry_limit is None
+            else self.payload_records[:entry_limit]
+        )
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "region_byte_length": self.region_byte_length,
+            "payload_base_offset": self.payload_base_offset,
+            "covered_payload_byte_length": self.covered_payload_byte_length,
+            "trailer_offset": self.trailer_offset,
+            "trailer_byte_length": self.trailer_byte_length,
+            "payload_record_count": self.payload_record_count,
+            "scan_bytes": self.scan_bytes,
+            "prefix_hash_bytes": self.prefix_hash_bytes,
+            "payload_records_returned": len(records),
+            "payload_records": [record.to_dict() for record in records],
+            "trailer_record": self.trailer_record.to_dict(),
         }
 
 
@@ -304,6 +386,68 @@ def parse_dsy_region1_index(path_or_file: str | Path) -> DsyRegion1Index:
     )
 
 
+def summarize_dsy_region1_records(
+    path_or_file: str | Path,
+    *,
+    scan_bytes: int = DSY_REGION1_RECORD_SCAN_BYTES,
+    prefix_hash_bytes: int = DSY_REGION1_RECORD_HASH_BYTES,
+) -> DsyRegion1RecordDiagnostics:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    index = parse_dsy_region1_index(path)
+    region = dsy_map.regions[1]
+    payload_records: list[DsyRegion1RecordSummary] = []
+
+    with path.open("rb") as handle:
+        for entry in index.entries:
+            handle.seek(entry.payload_offset)
+            scan = handle.read(min(entry.byte_length, scan_bytes))
+            payload_records.append(
+                _summarize_dsy_region1_record_scan(
+                    scan=scan,
+                    dsy_map=dsy_map,
+                    index=index,
+                    record_kind="payload",
+                    table_record_index=entry.table_record_index,
+                    record_offset=entry.payload_offset,
+                    region_relative_offset=entry.payload_offset - region.data_offset,
+                    payload_relative_offset=entry.payload_relative_offset,
+                    byte_length=entry.byte_length,
+                    prefix_hash_bytes=prefix_hash_bytes,
+                )
+            )
+
+        handle.seek(index.trailer_offset)
+        trailer_scan = handle.read(min(index.trailer_byte_length, scan_bytes))
+        trailer_record = _summarize_dsy_region1_record_scan(
+            scan=trailer_scan,
+            dsy_map=dsy_map,
+            index=index,
+            record_kind="trailer",
+            table_record_index=None,
+            record_offset=index.trailer_offset,
+            region_relative_offset=index.trailer_offset - region.data_offset,
+            payload_relative_offset=None,
+            byte_length=index.trailer_byte_length,
+            prefix_hash_bytes=prefix_hash_bytes,
+        )
+
+    return DsyRegion1RecordDiagnostics(
+        path=index.path,
+        region_offset=index.region_offset,
+        region_byte_length=index.region_byte_length,
+        payload_base_offset=index.payload_base_offset,
+        covered_payload_byte_length=index.covered_payload_byte_length,
+        trailer_offset=index.trailer_offset,
+        trailer_byte_length=index.trailer_byte_length,
+        payload_record_count=len(index.entries),
+        scan_bytes=scan_bytes,
+        prefix_hash_bytes=prefix_hash_bytes,
+        payload_records=payload_records,
+        trailer_record=trailer_record,
+    )
+
+
 def summarize_dsy_regions(
     path_or_file: str | Path,
     *,
@@ -377,6 +521,83 @@ def _marker_counts(data: bytes) -> dict[str, int]:
         if key in counts:
             counts[key] += 1
     return counts
+
+
+def _summarize_dsy_region1_record_scan(
+    *,
+    scan: bytes,
+    dsy_map: DsyMap,
+    index: DsyRegion1Index,
+    record_kind: str,
+    table_record_index: int | None,
+    record_offset: int,
+    region_relative_offset: int,
+    payload_relative_offset: int | None,
+    byte_length: int,
+    prefix_hash_bytes: int,
+) -> DsyRegion1RecordSummary:
+    return DsyRegion1RecordSummary(
+        record_kind=record_kind,
+        table_record_index=table_record_index,
+        record_offset=record_offset,
+        region_relative_offset=region_relative_offset,
+        payload_relative_offset=payload_relative_offset,
+        byte_length=byte_length,
+        scan_byte_length=len(scan),
+        prefix_sha256=hashlib.sha256(scan[:prefix_hash_bytes]).hexdigest(),
+        nul_byte_ratio=_byte_ratio(scan, lambda value: value == 0),
+        printable_ascii_ratio=_byte_ratio(scan, lambda value: 0x20 <= value <= 0x7E),
+        unique_byte_count=len(set(scan)),
+        marker_counts=_marker_counts(scan),
+        marker_first_offsets=_marker_first_offsets(scan),
+        possible_absolute_offsets_by_region=_possible_absolute_offsets_by_region(
+            scan,
+            dsy_map,
+        ),
+        possible_region_relative_offsets=_possible_region_relative_offsets(
+            scan,
+            dsy_map,
+        ),
+        possible_region1_payload_relative_offsets=_possible_relative_offset_count(
+            scan,
+            index.covered_payload_byte_length,
+        ),
+    )
+
+
+def _possible_absolute_offsets_by_region(data: bytes, dsy_map: DsyMap) -> dict[str, int]:
+    return {
+        f"region_{index}": _possible_absolute_offset_count(data, region)
+        for index, region in enumerate(dsy_map.regions)
+    }
+
+
+def _possible_absolute_offset_count(
+    data: bytes,
+    region: DsyRegionDescriptor,
+) -> int:
+    count = 0
+    for offset in range(0, len(data) - 3, 2):
+        value = int.from_bytes(data[offset : offset + 4], "big")
+        if region.data_offset <= value < region.end_offset:
+            count += 1
+    return count
+
+
+def _possible_region_relative_offsets(data: bytes, dsy_map: DsyMap) -> dict[str, int]:
+    return {
+        f"region_{index}": _possible_relative_offset_count(data, region.byte_length)
+        for index, region in enumerate(dsy_map.regions)
+    }
+
+
+def _possible_relative_offset_count(data: bytes, byte_length: int) -> int:
+    count = 0
+    for offset in range(0, len(data) - 3, 2):
+        value = int.from_bytes(data[offset : offset + 4], "big")
+        if 0 <= value < byte_length:
+            count += 1
+    return count
 
 
 def _byte_ratio(data: bytes, predicate: Callable[[int], bool]) -> float:

@@ -103,6 +103,10 @@ immediately after the table. All observed DSY files also have a small unassigned
 after the covered payload. The `dsy-region1-index` command reports this structure without dumping
 payload bytes.
 
+The `dsy-region1-records` command reports bounded diagnostics for those indexed payload records
+and the trailer: prefix hashes, byte ratios, marker positions/counts, and candidate absolute or
+relative offset counts by DSY region. It does not dump payload bytes or decoded text.
+
 ## `DRT` Primary Index Table
 
 Every observed `DRT` has a descriptor-`0x390` primary index table. Its length is a multiple of 20

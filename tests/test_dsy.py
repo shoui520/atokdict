@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index, summarize_dsy_regions
+from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index
+from atokdict.dsy import summarize_dsy_region1_records, summarize_dsy_regions
 
 
 def test_parse_synthetic_dsy_map(tmp_path: Path) -> None:
@@ -84,8 +85,8 @@ def test_parse_synthetic_dsy_region1_index(tmp_path: Path) -> None:
         + (0).to_bytes(4, "big")
         + (10).to_bytes(4, "big")
         + (10).to_bytes(4, "big")
-        + (6).to_bytes(4, "big")
-        + (16).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (18).to_bytes(4, "big")
     )
     path.write_bytes(data)
 
@@ -99,13 +100,69 @@ def test_parse_synthetic_dsy_region1_index(tmp_path: Path) -> None:
     assert index.table_header_first_field == 24
     assert index.table_header_second_field == 0
     assert index.payload_base_offset == 0x578
-    assert index.covered_payload_byte_length == 16
-    assert index.trailer_offset == 0x588
-    assert index.trailer_byte_length == 24
+    assert index.covered_payload_byte_length == 18
+    assert index.trailer_offset == 0x58A
+    assert index.trailer_byte_length == 22
     assert [entry.payload_offset for entry in index.entries] == [0x578, 0x582]
     assert [entry.payload_relative_offset for entry in index.entries] == [0, 10]
-    assert [entry.byte_length for entry in index.entries] == [10, 6]
-    assert [entry.cumulative_payload_end for entry in index.entries] == [10, 16]
+    assert [entry.byte_length for entry in index.entries] == [10, 8]
+    assert [entry.cumulative_payload_end for entry in index.entries] == [10, 18]
+
+
+def test_summarize_synthetic_dsy_region1_records(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=3)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+
+    data[0x560:0x578] = (
+        (24).to_bytes(4, "big")
+        + (0).to_bytes(4, "big")
+        + (10).to_bytes(4, "big")
+        + (10).to_bytes(4, "big")
+        + (8).to_bytes(4, "big")
+        + (18).to_bytes(4, "big")
+    )
+    data[0x578:0x582] = (
+        (0xFFFF).to_bytes(2, "big")
+        + (0xFFFE).to_bytes(2, "big")
+        + (0x5C0).to_bytes(4, "big")
+        + b"\x00\x04"
+    )
+    data[0x582:0x58A] = (0x5A0).to_bytes(4, "big") + (8).to_bytes(4, "big")
+    data[0x58A:0x590] = (0xFFFD).to_bytes(2, "big") + (4).to_bytes(4, "big")
+    path.write_bytes(data)
+
+    diagnostics = summarize_dsy_region1_records(path, scan_bytes=16)
+
+    assert diagnostics.payload_record_count == 2
+    assert diagnostics.trailer_byte_length == 22
+    first = diagnostics.payload_records[0]
+    assert first.record_kind == "payload"
+    assert first.table_record_index == 1
+    assert first.record_offset == 0x578
+    assert first.region_relative_offset == 0x18
+    assert first.payload_relative_offset == 0
+    assert first.marker_first_offsets["0xffff"] == 0
+    assert first.marker_first_offsets["0xfffe"] == 2
+    assert first.marker_counts["0xffff"] == 1
+    assert first.possible_absolute_offsets_by_region["region_3"] == 1
+    assert first.possible_region1_payload_relative_offsets == 0
+
+    second = diagnostics.payload_records[1]
+    assert second.possible_absolute_offsets_by_region["region_2"] == 1
+    assert second.possible_region_relative_offsets["region_1"] == 1
+
+    trailer = diagnostics.trailer_record
+    assert trailer.record_kind == "trailer"
+    assert trailer.table_record_index is None
+    assert trailer.record_offset == 0x58A
+    assert trailer.marker_counts["0xfffd"] == 1
+    assert trailer.possible_region1_payload_relative_offsets >= 1
 
 
 def _write_region(data: bytearray, descriptor_offset: int, offset: int, length: int) -> None:
