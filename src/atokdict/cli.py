@@ -8,6 +8,7 @@ from atokdict.companion import (
     companion_page_type_counts,
     parse_companion_header,
     read_companion_schema,
+    summarize_dsz_relationships,
 )
 from atokdict.container import parse_header
 from atokdict.container import parse_section_descriptors
@@ -231,6 +232,12 @@ def main(argv: list[str] | None = None) -> int:
         "--page-types", action="store_true", help="include decoded SQLite page type counts"
     )
 
+    dsz_relationships_parser = subparsers.add_parser(
+        "dsz-relationships",
+        help="summarize DSZ table counts and row relationships without dumping text",
+    )
+    dsz_relationships_parser.add_argument("path", type=Path)
+
     args = parser.parse_args(argv)
 
     if args.command == "header":
@@ -420,6 +427,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.page_types:
             output["page_types"] = companion_page_type_counts(args.path)
         print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsz-relationships":
+        summary = summarize_dsz_relationships(args.path)
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     parser.error(f"unsupported command: {args.command}")

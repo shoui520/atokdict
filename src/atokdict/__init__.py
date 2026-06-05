@@ -1,6 +1,10 @@
 """ATOK dictionary reverse-engineering helpers."""
 
 from atokdict.companion import CompanionSqliteHeader, parse_companion_header
+from atokdict.companion import DszClassTreeSummary, DszDegreeSummary
+from atokdict.companion import DszForeignKeySummary, DszIdRangeSummary
+from atokdict.companion import DszRelationshipSummary, DszTextColumnSummary
+from atokdict.companion import DszValueCountSummary, summarize_dsz_relationships
 from atokdict.container import AtokHeader, AtokSectionDescriptor, parse_header
 from atokdict.container import parse_section_descriptors
 from atokdict.drt import DrtPrimaryBlockSummary, DrtPrimaryIndex
@@ -80,6 +84,13 @@ __all__ = [
     "DsyRegion3SentinelRun",
     "DsyRegion3SentinelSummary",
     "DsyRegionSummary",
+    "DszClassTreeSummary",
+    "DszDegreeSummary",
+    "DszForeignKeySummary",
+    "DszIdRangeSummary",
+    "DszRelationshipSummary",
+    "DszTextColumnSummary",
+    "DszValueCountSummary",
     "DrtKeywordRange",
     "DrtKeywordRangeSummary",
     "DrtPrimaryKeywordRange",
@@ -91,6 +102,7 @@ __all__ = [
     "parse_dsy_region1_index",
     "parse_header",
     "parse_section_descriptors",
+    "summarize_dsz_relationships",
     "summarize_drt_keyword_ranges",
     "summarize_drt_primary_keyword_ranges",
     "summarize_drt_primary_blocks",

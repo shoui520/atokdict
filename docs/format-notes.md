@@ -321,3 +321,19 @@ CREATE INDEX keyword_search_index on keyword_info(word);
 Observed `DSZ` schema stores thesaurus/access data with `TABLE_HEADER`, `TABLE_CLASS`,
 `TABLE_GROUP`, `TABLE_WORD`, and `TABLE_WORD_IHYOKI` plus indexes over class, group, reading,
 surface form, label, and alternate surface-form fields.
+
+The `dsz-relationships` command reports aggregate DSZ table profiles without dumping text:
+row counts, dense ID ranges, class-tree shape, foreign-key-like orphan counts, parent/child degree
+statistics, text-column length/null profiles, and small numeric value distributions.
+
+Both observed DSZ files use dense zero-based integer IDs for `TABLE_CLASS.CLASS_ID`,
+`TABLE_GROUP.GROUP_ID`, and `TABLE_WORD.ID`. The observed class trees have maximum depth 3 and no
+cycles. `TABLE_GROUP.CLASS_ID`, `TABLE_WORD.CLASS_ID`, `TABLE_WORD.GROUP_ID`, and
+`TABLE_WORD_IHYOKI` references are internally consistent in the observed files. Some
+`TABLE_CLASS.PARENT_ID` values point outside the class table; these are currently treated as
+unassigned structural roots or sentinels, not parse errors.
+
+For `SANRUI`, the DSY metadata/table count `825` matches the number of DSZ classes referenced by
+groups and words. Because DSY region 1 reserves its first table row as a header-like record, this
+leaves 824 indexed region-1 payload records. This is a useful lead for linking DSY access records
+to active DSZ classes, but the payload-record order is not assigned yet.

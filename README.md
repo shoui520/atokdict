@@ -42,6 +42,7 @@ python -m atokdict inventory /path/to/dicts --json
 python -m atokdict setup /path/to/SETUP.INI
 python -m atokdict companion-header /path/to/FILE.DRW
 python -m atokdict companion-schema /path/to/FILE.DSZ --counts --page-types
+python -m atokdict dsz-relationships /path/to/FILE.DSZ
 python -m atokdict scan-text-runs /path/to/FILE.DRT --limit 20
 python -m atokdict scan-text-runs /path/to/FILE.DIC --encoding utf-16be --limit 20
 ```
