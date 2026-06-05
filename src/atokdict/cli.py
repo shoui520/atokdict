@@ -16,7 +16,7 @@ from atokdict.drt import parse_drt_root_index
 from atokdict.drt import summarize_drt_primary_blocks
 from atokdict.drt import summarize_drt_primary_segments
 from atokdict.drt import summarize_drt_root_child_blocks
-from atokdict.dsy import parse_dsy_map, summarize_dsy_regions
+from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index, summarize_dsy_regions
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
@@ -104,6 +104,12 @@ def main(argv: list[str] | None = None) -> int:
     dsy_regions_parser.add_argument("path", type=Path)
     dsy_regions_parser.add_argument("--scan-bytes", type=int, default=4096)
     dsy_regions_parser.add_argument("--prefix-hash-bytes", type=int, default=64)
+
+    dsy_region1_parser = subparsers.add_parser(
+        "dsy-region1-index", help="parse the observed DSY region-1 boundary table"
+    )
+    dsy_region1_parser.add_argument("path", type=Path)
+    dsy_region1_parser.add_argument("--limit", type=int, default=20)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -222,6 +228,11 @@ def main(argv: list[str] | None = None) -> int:
             prefix_hash_bytes=args.prefix_hash_bytes,
         )
         print(json.dumps([region.to_dict() for region in regions], ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-region1-index":
+        index = parse_dsy_region1_index(args.path)
+        print(json.dumps(index.to_dict(entry_limit=args.limit), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":

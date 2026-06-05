@@ -76,7 +76,7 @@ Observed `0x300` metadata words:
 | `0x300` | 4 | Constant `0x004000ff` in observed files. |
 | `0x304` | 4 | Constant `1` in observed files. |
 | `0x308` | 4 | Constant `0x00ffffff` in observed files. |
-| `0x30c` | 4 | Count-like field. Observed `1`, `0x139`, `0x339`, `0xaf9`. |
+| `0x30c` | 4 | Region-1 table record count in observed files. |
 | `0x310` | 4 | Constant `0x00200200` in observed files. |
 | `0x314` | 4 | High 16 bits are `0xffff`; low 16 bits are count-like. |
 | `0x318` | 4 | Constant `0x00080000` in observed files. |
@@ -94,6 +94,14 @@ permutation of values `1..256`. Region 3 prefixes commonly contain the same mark
 in DRT child/primary diagnostics: `0xffff`, `0xfffe`, and `0xfffd`. The `dsy-regions` command
 reports bounded region diagnostics: prefix hashes, byte ratios, marker positions/counts, 16-bit
 word counts, and whether region 0 is the observed `1..256` permutation.
+
+Region 1 begins with an 8-byte-record boundary table. Metadata field `0x30c` is the observed
+table record count, so the table byte length is `field_0x30c * 8`. The first table record is a
+header-like pair `(table_byte_length, 0)`. Subsequent records are
+`(payload_byte_length, cumulative_payload_end)` pairs that partition the covered region-1 payload
+immediately after the table. All observed DSY files also have a small unassigned region-1 trailer
+after the covered payload. The `dsy-region1-index` command reports this structure without dumping
+payload bytes.
 
 ## `DRT` Primary Index Table
 

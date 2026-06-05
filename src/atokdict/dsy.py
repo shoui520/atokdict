@@ -14,6 +14,7 @@ DSY_METADATA_BYTE_LENGTH = 0x30
 DSY_REGION_TABLE_OFFSET = 0x330
 DSY_REGION_TABLE_END = 0x360
 DSY_REGION_RECORD_SIZE = 8
+DSY_REGION1_INDEX_RECORD_SIZE = 8
 DSY_REGION_HASH_BYTES = 64
 DSY_REGION_SCAN_BYTES = 4096
 
@@ -96,6 +97,64 @@ class DsyRegionSummary:
         }
 
 
+@dataclass(frozen=True)
+class DsyRegion1IndexEntry:
+    table_record_index: int
+    index_record_offset: int
+    payload_offset: int
+    payload_relative_offset: int
+    byte_length: int
+    end_offset: int
+    cumulative_payload_end: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "table_record_index": self.table_record_index,
+            "index_record_offset": self.index_record_offset,
+            "payload_offset": self.payload_offset,
+            "payload_relative_offset": self.payload_relative_offset,
+            "byte_length": self.byte_length,
+            "end_offset": self.end_offset,
+            "cumulative_payload_end": self.cumulative_payload_end,
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion1Index:
+    path: str | None
+    region_offset: int
+    region_byte_length: int
+    metadata_record_count: int
+    table_byte_length: int
+    table_record_count: int
+    table_header_first_field: int
+    table_header_second_field: int
+    payload_base_offset: int
+    covered_payload_byte_length: int
+    trailer_offset: int
+    trailer_byte_length: int
+    entries: list[DsyRegion1IndexEntry]
+
+    def to_dict(self, *, entry_limit: int | None = None) -> dict[str, object]:
+        entries = self.entries if entry_limit is None else self.entries[:entry_limit]
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "region_byte_length": self.region_byte_length,
+            "metadata_record_count": self.metadata_record_count,
+            "table_byte_length": self.table_byte_length,
+            "table_record_count": self.table_record_count,
+            "table_header_first_field": self.table_header_first_field,
+            "table_header_second_field": self.table_header_second_field,
+            "payload_base_offset": self.payload_base_offset,
+            "covered_payload_byte_length": self.covered_payload_byte_length,
+            "trailer_offset": self.trailer_offset,
+            "trailer_byte_length": self.trailer_byte_length,
+            "entries_returned": len(entries),
+            "entries": [entry.to_dict() for entry in entries],
+        }
+
+
 def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
     path = Path(path_or_file)
     header = parse_header(path)
@@ -158,6 +217,90 @@ def parse_dsy_map(path_or_file: str | Path) -> DsyMap:
         field_0x314_low_count_like=field_0x314 & 0xFFFF,
         regions=regions,
         regions_cover_from_0x360_to_eof=regions_cover,
+    )
+
+
+def parse_dsy_region1_index(path_or_file: str | Path) -> DsyRegion1Index:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    if len(dsy_map.regions) < 2:
+        raise ValueError("DSY region 1 index requires at least two mapped regions")
+
+    region = dsy_map.regions[1]
+    record_count = dsy_map.field_0x30c_count_like
+    if record_count <= 0:
+        raise ValueError("DSY region 1 index requires a positive metadata record count")
+
+    table_byte_length = record_count * DSY_REGION1_INDEX_RECORD_SIZE
+    if table_byte_length > region.byte_length:
+        raise ValueError("DSY region 1 index table exceeds region 1 length")
+
+    with path.open("rb") as handle:
+        handle.seek(region.data_offset)
+        table = handle.read(table_byte_length)
+    if len(table) != table_byte_length:
+        raise ValueError("DSY region 1 index table is truncated")
+
+    records = [
+        (
+            int.from_bytes(
+                table[offset : offset + 4],
+                "big",
+            ),
+            int.from_bytes(
+                table[offset + 4 : offset + DSY_REGION1_INDEX_RECORD_SIZE],
+                "big",
+            ),
+        )
+        for offset in range(0, table_byte_length, DSY_REGION1_INDEX_RECORD_SIZE)
+    ]
+    table_header_first_field, table_header_second_field = records[0]
+    if table_header_first_field != table_byte_length:
+        raise ValueError("DSY region 1 table header does not match metadata count")
+    if table_header_second_field != 0:
+        raise ValueError("DSY region 1 table header second field is not zero")
+
+    payload_base_offset = region.data_offset + table_byte_length
+    entries: list[DsyRegion1IndexEntry] = []
+    previous_end = 0
+    for index, (byte_length, cumulative_end) in enumerate(records[1:], start=1):
+        if cumulative_end != previous_end + byte_length:
+            raise ValueError("DSY region 1 table entries are not cumulative")
+        payload_offset = payload_base_offset + previous_end
+        entries.append(
+            DsyRegion1IndexEntry(
+                table_record_index=index,
+                index_record_offset=region.data_offset
+                + index * DSY_REGION1_INDEX_RECORD_SIZE,
+                payload_offset=payload_offset,
+                payload_relative_offset=previous_end,
+                byte_length=byte_length,
+                end_offset=payload_offset + byte_length,
+                cumulative_payload_end=cumulative_end,
+            )
+        )
+        previous_end = cumulative_end
+
+    covered_payload_byte_length = previous_end
+    trailer_offset = payload_base_offset + covered_payload_byte_length
+    trailer_byte_length = region.end_offset - trailer_offset
+    if trailer_byte_length < 0:
+        raise ValueError("DSY region 1 index entries exceed region 1 length")
+
+    return DsyRegion1Index(
+        path=str(path),
+        region_offset=region.data_offset,
+        region_byte_length=region.byte_length,
+        metadata_record_count=record_count,
+        table_byte_length=table_byte_length,
+        table_record_count=len(records),
+        table_header_first_field=table_header_first_field,
+        table_header_second_field=table_header_second_field,
+        payload_base_offset=payload_base_offset,
+        covered_payload_byte_length=covered_payload_byte_length,
+        trailer_offset=trailer_offset,
+        trailer_byte_length=trailer_byte_length,
+        entries=entries,
     )
 
 
