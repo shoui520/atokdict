@@ -10,6 +10,7 @@ from atokdict.dsy import summarize_dsy_region3_first_run_outliers
 from atokdict.dsy import summarize_dsy_region3_gap4
 from atokdict.dsy import summarize_dsy_region3_gap4_links
 from atokdict.dsy import summarize_dsy_region3_prefix
+from atokdict.dsy import summarize_dsy_region3_run_index_links
 from atokdict.dsy import summarize_dsy_region3_sentinels
 
 
@@ -456,6 +457,91 @@ def test_summarize_synthetic_dsy_region3_first_run_outliers(tmp_path: Path) -> N
     assert secondary_gap6.gap_word_count == 6
     assert secondary_gap6.non_first_match_position_counts == {"3": 1}
     assert secondary_gap6.late_after_second_match_position_counts == {"3": 1}
+
+
+def test_summarize_synthetic_dsy_region3_run_index_links(tmp_path: Path) -> None:
+    path = tmp_path / "sample.DSY"
+    data = bytearray(0x760)
+    _write_dsy_header(data)
+    _write_dsy_metadata(data, region1_record_count=1)
+    _write_region(data, 0x330, 0x360, 0x200)
+    _write_region(data, 0x338, 0x560, 0x40)
+    _write_region(data, 0x340, 0x5A0, 0x20)
+    _write_region(data, 0x348, 0x5C0, 0x1A0)
+    data[0x560:0x568] = (8).to_bytes(4, "big") + (0).to_bytes(4, "big")
+
+    prefix_words = [
+        68,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xFFFF,
+        2,
+        0xFFFE,
+        4,
+        4,
+        99,
+        0xFFFD,
+        6,
+        55,
+        6,
+        77,
+        88,
+        0xFFFC,
+        0,
+        0xFFF0,
+        0,
+        0xFFEF,
+        0,
+        0xFFE0,
+        0,
+        0xFFDF,
+        0,
+        0xFFDE,
+        0,
+        0xFFD0,
+        0,
+    ]
+    data[0x5C0:0x604] = b"".join(
+        word.to_bytes(2, "big") for word in prefix_words
+    )
+    path.write_bytes(data)
+
+    summary = summarize_dsy_region3_run_index_links(path)
+
+    assert summary.first_run_sentinel_word_count == 4
+    assert summary.first_run_interval_count == 3
+    assert summary.descending_run_count == 4
+    assert summary.later_run_count == 3
+    assert summary.same_index_later_run_count == 2
+    assert summary.missing_later_run_count == 1
+    assert summary.later_run_without_first_run_interval_count == 1
+    no_match, first_only, second_position, late = summary.category_summaries
+    assert no_match.category == "no_anchor_match"
+    assert no_match.interval_count == 1
+    assert no_match.same_index_later_run_count == 0
+    assert no_match.missing_interval_ordinal_min == 0
+    assert no_match.first_run_gap_counts == {"2": 1}
+    assert first_only.category == "first_only"
+    assert first_only.interval_count == 0
+    assert second_position.category == "second_position"
+    assert second_position.interval_count == 1
+    assert second_position.same_index_later_run_count == 1
+    assert second_position.first_run_gap_counts == {"4": 1}
+    assert second_position.linked_later_run_value_count_counts == {"2": 1}
+    assert second_position.linked_later_run_value_ordinal_min == 15
+    assert second_position.linked_later_run_value_ordinal_max == 16
+    assert late.category == "late_after_second"
+    assert late.interval_count == 1
+    assert late.same_index_later_run_count == 1
+    assert late.first_run_gap_counts == {"6": 1}
+    assert late.linked_later_run_value_count_counts == {"3": 1}
+    assert late.linked_later_run_value_ordinal_min == 31
+    assert late.linked_later_run_value_ordinal_max == 33
 
 
 def test_summarize_synthetic_dsy_region3_gap4(tmp_path: Path) -> None:

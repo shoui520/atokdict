@@ -22,6 +22,8 @@ from atokdict.dsy import DsyRegion3FirstRunSummary
 from atokdict.dsy import DsyRegion3Gap4LinkSlotSummary, DsyRegion3Gap4LinkSummary
 from atokdict.dsy import DsyRegion3Gap4SlotSummary, DsyRegion3Gap4Summary
 from atokdict.dsy import DsyRegion3PrefixSummary
+from atokdict.dsy import DsyRegion3RunIndexLinkCategorySummary
+from atokdict.dsy import DsyRegion3RunIndexLinkSummary
 from atokdict.dsy import DsyRegion3SentinelRun, DsyRegion3SentinelSummary
 from atokdict.dsy import parse_dsy_map, parse_dsy_region1_index, summarize_dsy_regions
 from atokdict.dsy import summarize_dsy_region1_records
@@ -31,6 +33,7 @@ from atokdict.dsy import summarize_dsy_region3_first_run_outliers
 from atokdict.dsy import summarize_dsy_region3_gap4
 from atokdict.dsy import summarize_dsy_region3_gap4_links
 from atokdict.dsy import summarize_dsy_region3_prefix, summarize_dsy_region3_sentinels
+from atokdict.dsy import summarize_dsy_region3_run_index_links
 from atokdict.linkage import DrtKeywordRange, DrtKeywordRangeSummary
 from atokdict.linkage import DrtPrimaryKeywordRange, DrtPrimaryKeywordRangeSummary
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
@@ -64,6 +67,8 @@ __all__ = [
     "DsyRegion3Gap4SlotSummary",
     "DsyRegion3Gap4Summary",
     "DsyRegion3PrefixSummary",
+    "DsyRegion3RunIndexLinkCategorySummary",
+    "DsyRegion3RunIndexLinkSummary",
     "DsyRegion3SentinelRun",
     "DsyRegion3SentinelSummary",
     "DsyRegionSummary",
@@ -90,6 +95,7 @@ __all__ = [
     "summarize_dsy_region3_gap4",
     "summarize_dsy_region3_gap4_links",
     "summarize_dsy_region3_prefix",
+    "summarize_dsy_region3_run_index_links",
     "summarize_dsy_region3_sentinels",
     "summarize_dsy_regions",
 ]

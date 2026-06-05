@@ -25,6 +25,7 @@ from atokdict.dsy import summarize_dsy_region3_gap4
 from atokdict.dsy import summarize_dsy_region3_gap4_links
 from atokdict.dsy import summarize_dsy_region3_prefix
 from atokdict.dsy import summarize_dsy_region3_sentinels
+from atokdict.dsy import summarize_dsy_region3_run_index_links
 from atokdict.installer import parse_setup_ini
 from atokdict.inventory import inventory_to_dict, scan_inventory
 from atokdict.linkage import summarize_drt_primary_keyword_ranges
@@ -172,6 +173,12 @@ def main(argv: list[str] | None = None) -> int:
         help="summarize aggregate index matches for region-3 gap-4 chunks",
     )
     dsy_region3_gap4_links_parser.add_argument("path", type=Path)
+
+    dsy_region3_run_index_links_parser = subparsers.add_parser(
+        "dsy-region3-run-index-links",
+        help="compare first-run interval ordinals to later region-3 sentinel runs",
+    )
+    dsy_region3_run_index_links_parser.add_argument("path", type=Path)
 
     inventory_parser = subparsers.add_parser("inventory", help="inventory dictionary sidecars")
     inventory_parser.add_argument("root", type=Path)
@@ -343,6 +350,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "dsy-region3-gap4-links":
         links = summarize_dsy_region3_gap4_links(args.path)
         print(json.dumps(links.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "dsy-region3-run-index-links":
+        run_links = summarize_dsy_region3_run_index_links(args.path)
+        print(json.dumps(run_links.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "inventory":

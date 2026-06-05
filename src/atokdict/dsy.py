@@ -578,6 +578,90 @@ class DsyRegion3FirstRunOutlierSummary:
 
 
 @dataclass(frozen=True)
+class DsyRegion3RunIndexLinkCategorySummary:
+    category: str
+    interval_count: int
+    interval_ordinal_min: int | None
+    interval_ordinal_max: int | None
+    same_index_later_run_count: int
+    missing_later_run_count: int
+    missing_interval_ordinal_min: int | None
+    missing_interval_ordinal_max: int | None
+    first_run_gap_counts: dict[str, int]
+    linked_later_run_value_count_min: int | None
+    linked_later_run_value_count_max: int | None
+    linked_later_run_value_count_counts: dict[str, int]
+    linked_later_run_word_span_min: int | None
+    linked_later_run_word_span_max: int | None
+    linked_later_run_value_ordinal_min: int | None
+    linked_later_run_value_ordinal_max: int | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "category": self.category,
+            "interval_count": self.interval_count,
+            "interval_ordinal_min": self.interval_ordinal_min,
+            "interval_ordinal_max": self.interval_ordinal_max,
+            "same_index_later_run_count": self.same_index_later_run_count,
+            "missing_later_run_count": self.missing_later_run_count,
+            "missing_interval_ordinal_min": self.missing_interval_ordinal_min,
+            "missing_interval_ordinal_max": self.missing_interval_ordinal_max,
+            "first_run_gap_counts": self.first_run_gap_counts,
+            "linked_later_run_value_count_min": (
+                self.linked_later_run_value_count_min
+            ),
+            "linked_later_run_value_count_max": (
+                self.linked_later_run_value_count_max
+            ),
+            "linked_later_run_value_count_counts": (
+                self.linked_later_run_value_count_counts
+            ),
+            "linked_later_run_word_span_min": self.linked_later_run_word_span_min,
+            "linked_later_run_word_span_max": self.linked_later_run_word_span_max,
+            "linked_later_run_value_ordinal_min": (
+                self.linked_later_run_value_ordinal_min
+            ),
+            "linked_later_run_value_ordinal_max": (
+                self.linked_later_run_value_ordinal_max
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class DsyRegion3RunIndexLinkSummary:
+    path: str | None
+    region_offset: int
+    prefix_byte_length: int
+    first_run_sentinel_word_count: int
+    first_run_interval_count: int
+    descending_run_count: int
+    later_run_count: int
+    same_index_later_run_count: int
+    missing_later_run_count: int
+    later_run_without_first_run_interval_count: int
+    category_summaries: list[DsyRegion3RunIndexLinkCategorySummary]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "region_offset": self.region_offset,
+            "prefix_byte_length": self.prefix_byte_length,
+            "first_run_sentinel_word_count": self.first_run_sentinel_word_count,
+            "first_run_interval_count": self.first_run_interval_count,
+            "descending_run_count": self.descending_run_count,
+            "later_run_count": self.later_run_count,
+            "same_index_later_run_count": self.same_index_later_run_count,
+            "missing_later_run_count": self.missing_later_run_count,
+            "later_run_without_first_run_interval_count": (
+                self.later_run_without_first_run_interval_count
+            ),
+            "category_summaries": [
+                category.to_dict() for category in self.category_summaries
+            ],
+        }
+
+
+@dataclass(frozen=True)
 class DsyRegion3Gap4SlotSummary:
     slot_index: int
     value_count: int
@@ -1219,6 +1303,69 @@ def summarize_dsy_region3_first_run_outliers(
     )
 
 
+def summarize_dsy_region3_run_index_links(
+    path_or_file: str | Path,
+    *,
+    high_word_minimum: int = DSY_REGION3_HIGH_WORD_MINIMUM,
+) -> DsyRegion3RunIndexLinkSummary:
+    path = Path(path_or_file)
+    dsy_map = parse_dsy_map(path)
+    prefix = _read_dsy_region3_prefix(path, dsy_map)
+    words = _u16_words(prefix)
+    high_words = [
+        (word_index, value)
+        for word_index, value in enumerate(words)
+        if value >= high_word_minimum
+    ]
+    runs = _descending_high_word_runs(high_words)
+    if not runs:
+        raise ValueError("DSY region 3 prefix has no high-word sentinel runs")
+
+    first_run = runs[0]
+    later_runs_by_index = {run.run_index: run for run in runs[1:]}
+    intervals = _dsy_region3_first_run_intervals(
+        words,
+        first_run,
+        high_word_minimum,
+    )
+    interval_ordinals = {interval.ordinal for interval in intervals}
+    pairs_by_category: dict[
+        str,
+        list[tuple[_DsyRegion3FirstRunInterval, DsyRegion3SentinelRun | None]],
+    ] = {
+        "no_anchor_match": [],
+        "first_only": [],
+        "second_position": [],
+        "late_after_second": [],
+    }
+    same_index_later_run_count = 0
+    for interval in intervals:
+        later_run = later_runs_by_index.get(interval.ordinal)
+        if later_run is not None:
+            same_index_later_run_count += 1
+        category = _dsy_region3_interval_anchor_category(interval)
+        pairs_by_category[category].append((interval, later_run))
+
+    return DsyRegion3RunIndexLinkSummary(
+        path=str(path),
+        region_offset=dsy_map.regions[3].data_offset,
+        prefix_byte_length=len(prefix),
+        first_run_sentinel_word_count=first_run.value_count,
+        first_run_interval_count=len(intervals),
+        descending_run_count=len(runs),
+        later_run_count=len(runs) - 1,
+        same_index_later_run_count=same_index_later_run_count,
+        missing_later_run_count=len(intervals) - same_index_later_run_count,
+        later_run_without_first_run_interval_count=sum(
+            1 for run_index in later_runs_by_index if run_index not in interval_ordinals
+        ),
+        category_summaries=[
+            _summarize_dsy_region3_run_index_category(category, pairs)
+            for category, pairs in pairs_by_category.items()
+        ],
+    )
+
+
 def summarize_dsy_region3_gap4(
     path_or_file: str | Path,
     *,
@@ -1485,6 +1632,19 @@ def _dsy_region3_anchor_match_positions(
     ]
 
 
+def _dsy_region3_interval_anchor_category(
+    interval: _DsyRegion3FirstRunInterval,
+) -> str:
+    positions = _dsy_region3_anchor_match_positions(interval)
+    if not positions:
+        return "no_anchor_match"
+    if any(position > 2 for position in positions):
+        return "late_after_second"
+    if any(position > 1 for position in positions):
+        return "second_position"
+    return "first_only"
+
+
 def _summarize_dsy_region3_no_match_gap(
     gap_word_count: int,
     intervals: list[_DsyRegion3FirstRunInterval],
@@ -1506,6 +1666,65 @@ def _summarize_dsy_region3_no_match_gap(
         filler_even_value_count=sum(1 for value in filler_values if value % 2 == 0),
         filler_le_0x0100_count=sum(1 for value in filler_values if value <= 0x0100),
         filler_zero_count=sum(1 for value in filler_values if value == 0),
+    )
+
+
+def _summarize_dsy_region3_run_index_category(
+    category: str,
+    pairs: list[tuple[_DsyRegion3FirstRunInterval, DsyRegion3SentinelRun | None]],
+) -> DsyRegion3RunIndexLinkCategorySummary:
+    intervals = [interval for interval, _ in pairs]
+    linked_runs = [run for _, run in pairs if run is not None]
+    missing_ordinals = [
+        interval.ordinal for interval, run in pairs if run is None
+    ]
+    interval_ordinals = [interval.ordinal for interval in intervals]
+    later_run_value_counts = [run.value_count for run in linked_runs]
+    later_run_word_spans = [
+        run.end_word_index - run.start_word_index + 1 for run in linked_runs
+    ]
+    later_run_value_ordinals = [
+        ordinal
+        for run in linked_runs
+        for ordinal in (0xFFFF - run.start_value, 0xFFFF - run.end_value)
+    ]
+    return DsyRegion3RunIndexLinkCategorySummary(
+        category=category,
+        interval_count=len(intervals),
+        interval_ordinal_min=min(interval_ordinals) if interval_ordinals else None,
+        interval_ordinal_max=max(interval_ordinals) if interval_ordinals else None,
+        same_index_later_run_count=len(linked_runs),
+        missing_later_run_count=len(missing_ordinals),
+        missing_interval_ordinal_min=(
+            min(missing_ordinals) if missing_ordinals else None
+        ),
+        missing_interval_ordinal_max=(
+            max(missing_ordinals) if missing_ordinals else None
+        ),
+        first_run_gap_counts=_string_key_counts(
+            interval.gap_word_count for interval in intervals
+        ),
+        linked_later_run_value_count_min=(
+            min(later_run_value_counts) if later_run_value_counts else None
+        ),
+        linked_later_run_value_count_max=(
+            max(later_run_value_counts) if later_run_value_counts else None
+        ),
+        linked_later_run_value_count_counts=_string_key_counts(
+            later_run_value_counts
+        ),
+        linked_later_run_word_span_min=(
+            min(later_run_word_spans) if later_run_word_spans else None
+        ),
+        linked_later_run_word_span_max=(
+            max(later_run_word_spans) if later_run_word_spans else None
+        ),
+        linked_later_run_value_ordinal_min=(
+            min(later_run_value_ordinals) if later_run_value_ordinals else None
+        ),
+        linked_later_run_value_ordinal_max=(
+            max(later_run_value_ordinals) if later_run_value_ordinals else None
+        ),
     )
 
 

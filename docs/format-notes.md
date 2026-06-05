@@ -130,6 +130,10 @@ The `dsy-region3-first-run-outliers` command groups intervals with no anchor-tra
 intervals with non-first-position matches. It reports only gap-level ordinal ranges, anchor ranges,
 broad filler-value statistics, and relative-position histograms.
 
+The `dsy-region3-run-index-links` command compares first-run interval ordinals with later
+descending run indexes. Most first-run intervals have a later run with the same index, which
+suggests the first run is a compact index over later region-3 prefix subruns.
+
 The `dsy-region3-gap4` command summarizes the dominant gap-4 chunks inside the first sentinel run.
 It reports slot-level aggregate statistics for the three non-sentinel words between adjacent
 descending sentinels, without emitting the word triples.
